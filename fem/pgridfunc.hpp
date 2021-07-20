@@ -28,6 +28,9 @@ namespace mfem
 /// Compute a global Lp norm from the local Lp norms computed by each processor
 double GlobalLpNorm(const double p, double loc_norm, MPI_Comm comm);
 
+/* UW */
+double GlobalMean(double loc_mean, MPI_Comm comm);
+  
 /// Class for parallel grid function
 class ParGridFunction : public GridFunction
 {
@@ -207,6 +210,10 @@ public:
    using GridFunction::ProjectCoefficient;
    virtual void ProjectCoefficient(Coefficient &coeff);
 
+   /* UW */
+   using GridFunction::ProjectCoefficientSkeleton;
+   void ProjectCoefficientSkeleton(Coefficient &coeff);
+  
    using GridFunction::ProjectDiscCoefficient;
    /** @brief Project a discontinuous vector coefficient as a grid function on
        a continuous finite element space. The values in shared dofs are
@@ -266,6 +273,13 @@ public:
                           pfes->GetComm());
    }
 
+   /* UW */
+   double ComputeL2ErrorMinMean(Coefficient &exsol, const double mean,
+                                const IntegrationRule *irs[] = NULL) const
+   { 
+      return ComputeLpErrorMinMean(2.0, exsol, mean, NULL, irs); 
+   }
+  
    virtual double ComputeMaxError(Coefficient *exsol[],
                                   const IntegrationRule *irs[] = NULL) const
    {
@@ -294,6 +308,32 @@ public:
                              p, exsol, weight, irs), pfes->GetComm());
    }
 
+   /* UW */
+   double ComputeMean(const IntegrationRule *irs[] = NULL) const
+   {
+      return GlobalMean(GridFunction::ComputeMean(irs), pfes->GetComm());
+   }
+
+   /* UW */
+   double ComputeLpErrorMinMean(const double p, Coefficient &exsol, const double mean,
+                                Coefficient *weight = NULL,
+                                const IntegrationRule *irs[] = NULL) const
+   {
+      return GlobalLpNorm(p, GridFunction::ComputeLpErrorMinMean(
+                          p, exsol, mean, weight, irs), pfes->GetComm());
+   }
+
+   /* UW */
+   double ComputeDivError(const IntegrationRule *irs[] = NULL)
+   {
+      return GlobalLpNorm(2.0, GridFunction::ComputeDivError(irs), pfes->GetComm());
+   }
+   /* UW */
+   double ComputeDivErrorST(const IntegrationRule *irs[] = NULL)
+   {
+      return GlobalLpNorm(2.0, GridFunction::ComputeDivErrorST(irs), pfes->GetComm());
+   }
+  
    /** When given a vector weight, compute the pointwise (scalar) error as the
        dot product of the vector error with the vector weight. Otherwise, the
        scalar error is the l_2 norm of the vector error. */
@@ -318,6 +358,18 @@ public:
    /// Merge the local grid functions
    void SaveAsOne(std::ostream &out = mfem::out);
 
+   /* UW */
+   /** @brief Creates an array that has length eual to the number of 
+    * different element attributes. Then it matches the attributes to
+    * the last element index that has the given attribute
+   */
+   using GridFunction::ComputeBoundaryElementIndex;
+   void ComputeBoundaryElementIndex();
+   int ReturnBoundaryElementIndex(int attribute)
+   {
+      return BoundaryElementIndex[attribute];
+   }
+  
    virtual ~ParGridFunction() { }
 };
 

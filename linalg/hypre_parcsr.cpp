@@ -1632,6 +1632,165 @@ hypre_ParCSRMatrixSetConstantValues(hypre_ParCSRMatrix *A,
    return 0;
 }
 
+
+/* UW */
+void hypre_CSRMatrixEliminateCols(hypre_CSRMatrix *A,
+                                 HYPRE_Int ncols_to_eliminate,
+                                 HYPRE_Int *cols_to_eliminate,
+                                 hypre_Vector *X,
+                                 hypre_Vector *B)
+{
+   HYPRE_Int  i, j;
+   HYPRE_Int  jcol, ibeg, iend, pos;
+   HYPRE_Real a;
+
+   HYPRE_Int  *Ai    = hypre_CSRMatrixI(A);
+   HYPRE_Int  *Aj    = hypre_CSRMatrixJ(A);
+   HYPRE_Real *Adata = hypre_CSRMatrixData(A);
+   HYPRE_Int   nrows = hypre_CSRMatrixNumRows(A);
+
+   HYPRE_Real *Xdata = hypre_VectorData(X);
+   HYPRE_Real *Bdata = hypre_VectorData(B);
+
+   /* eliminate the columns */
+   for (i = 0; i < nrows; i++)
+   {
+      ibeg = Ai[i];
+      iend = Ai[i+1];
+      for (j = ibeg; j < iend; j++)
+      {
+         jcol = Aj[j];
+         pos = hypre_BinarySearch(cols_to_eliminate, jcol, ncols_to_eliminate);
+         if (pos != -1)
+         {
+            a = Adata[j];
+            Adata[j] = 0.0;
+            Bdata[i] -= a * Xdata[jcol];
+         }
+      }
+   }
+}
+
+
+/* UW */
+void hypre_ParCSRMatrixEliminateCols(hypre_ParCSRMatrix *A,
+                                    HYPRE_Int ncols_to_elim,
+                                    HYPRE_Int *cols_to_elim,
+                                    hypre_ParVector *X,
+                                    hypre_ParVector *B)
+{
+   hypre_CSRMatrix *diag = hypre_ParCSRMatrixDiag(A);
+   hypre_CSRMatrix *offd = hypre_ParCSRMatrixOffd(A);
+   HYPRE_Int diag_ncols  = hypre_CSRMatrixNumCols(diag);
+   HYPRE_Int offd_ncols  = hypre_CSRMatrixNumCols(offd);
+
+   hypre_Vector *Xlocal = hypre_ParVectorLocalVector(X);
+   hypre_Vector *Blocal = hypre_ParVectorLocalVector(B);
+
+   HYPRE_Real   *Xdata  = hypre_VectorData(Xlocal);  
+   
+   HYPRE_Int  num_offd_cols_to_elim;
+   HYPRE_Int  *offd_cols_to_elim;
+   HYPRE_Real *eliminate_coefs;
+
+   /* figure out which offd cols should be eliminated and with what coef */
+   hypre_ParCSRCommHandle *comm_handle;
+   hypre_ParCSRCommPkg *comm_pkg;
+   HYPRE_Int num_sends;
+   HYPRE_Int index, start;
+   HYPRE_Int i, j, k, irow;
+
+   HYPRE_Real *pholder = mfem_hypre_CTAlloc(HYPRE_Real, diag_ncols);
+   HYPRE_Real *eliminate_col = mfem_hypre_CTAlloc(HYPRE_Real, offd_ncols);
+   HYPRE_Real *buf_data, coef;  
+
+   /* make sure A has a communication package */
+   comm_pkg = hypre_ParCSRMatrixCommPkg(A);
+   if (!comm_pkg)
+   {
+      hypre_MatvecCommPkgCreate(A);
+      comm_pkg = hypre_ParCSRMatrixCommPkg(A);
+   }
+   
+   /* HACK: rows that shouldn't be eliminated are marked with quiet NaN;
+      those that should are set to the boundary value from X; this is to
+      avoid sending complex type (int+double) or communicating twice. */
+   for (i = 0; i < diag_ncols; i++)
+   {
+      pholder[i] = std::numeric_limits<HYPRE_Real>::quiet_NaN();
+   }
+   for (i = 0; i < ncols_to_elim; i++)
+   {
+      irow = cols_to_elim[i];
+      pholder[irow] = Xdata[irow];
+   }
+   
+   /* use a Matvec communication pattern to find (in eliminate_col)
+      which of the local offd columns are to be eliminated */
+   num_sends = hypre_ParCSRCommPkgNumSends(comm_pkg);
+   buf_data = mfem_hypre_CTAlloc(HYPRE_Real,
+                            hypre_ParCSRCommPkgSendMapStart(comm_pkg,
+                                                            num_sends));
+   index = 0;
+   for (i = 0; i < num_sends; i++)
+   {
+      start = hypre_ParCSRCommPkgSendMapStart(comm_pkg, i);
+      for (j = start; j < hypre_ParCSRCommPkgSendMapStart(comm_pkg, i+1); j++)
+      {
+         k = hypre_ParCSRCommPkgSendMapElmt(comm_pkg,j);
+         buf_data[index++] = pholder[k];
+      }
+   }
+   comm_handle = hypre_ParCSRCommHandleCreate(1, comm_pkg,
+                                              buf_data, eliminate_col);
+
+   hypre_CSRMatrixEliminateCols(diag, ncols_to_elim, cols_to_elim,
+                                Xlocal, Blocal);
+   
+   /* finish the communication */
+   hypre_ParCSRCommHandleDestroy(comm_handle);
+
+   /* received eliminate_col[], count offd columns to eliminate */
+   num_offd_cols_to_elim = 0;
+   for (i = 0; i < offd_ncols; i++)
+   {
+      coef = eliminate_col[i];
+      if (coef == coef) // test for NaN
+      {
+         num_offd_cols_to_elim++;
+      }
+   }
+   
+   offd_cols_to_elim = mfem_hypre_CTAlloc(HYPRE_Int, num_offd_cols_to_elim);
+   eliminate_coefs = mfem_hypre_CTAlloc(HYPRE_Real, num_offd_cols_to_elim);
+
+   /* get a list of offd column indices and coefs */
+   num_offd_cols_to_elim = 0;
+   for (i = 0; i < offd_ncols; i++)
+   {
+      coef = eliminate_col[i];
+      if (coef == coef) // test for NaN
+      {
+         offd_cols_to_elim[num_offd_cols_to_elim] = i;
+         eliminate_coefs[num_offd_cols_to_elim] = coef;
+         num_offd_cols_to_elim++;
+      }
+   }
+   
+   mfem_hypre_TFree(buf_data);
+   mfem_hypre_TFree(pholder);
+   mfem_hypre_TFree(eliminate_col);   
+   
+   /* eliminate the off-diagonal part */
+   hypre_CSRMatrixEliminateOffdColsAXB(offd, num_offd_cols_to_elim,
+                                       offd_cols_to_elim,
+                                       eliminate_coefs, Blocal);
+   
+   mfem_hypre_TFree(offd_cols_to_elim);
+   mfem_hypre_TFree(eliminate_coefs);
+}
+
+
 } // namespace mfem::internal
 
 } // namespace mfem

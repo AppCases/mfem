@@ -173,6 +173,13 @@ HypreParVector::HypreParVector(ParFiniteElementSpace *pfes)
    own_ParVector = 1;
 }
 
+void HypreParVector::WrapHypreParVector(hypre_ParVector *y)
+{
+   x = y;
+   _SetDataAndSize_();
+   own_ParVector = 0;
+}
+
 Vector * HypreParVector::GlobalVector() const
 {
    hypre_Vector *hv = hypre_ParVectorToVectorAll(*this);
@@ -1018,6 +1025,46 @@ HypreParMatrix * HypreParMatrix::Transpose() const
    return new HypreParMatrix(At);
 }
 
+#if MFEM_HYPRE_VERSION >= 21800
+HypreParMatrix * HypreParMatrix::ExtractSubmatrix(Array<int> &indices,
+                                                  double threshhold) const
+{
+   if (!(A->comm))
+   {
+      hypre_MatvecCommPkgCreate(A);
+   }
+
+   hypre_ParCSRMatrix *submat;
+
+   // Get number of rows stored on this processor
+   int local_num_vars = hypre_CSRMatrixNumRows(hypre_ParCSRMatrixDiag(A));
+
+   // Form hypre CF-splitting array designating submatrix as F-points (-1)
+   Array<int> CF_marker(local_num_vars);
+   CF_marker = 1;
+   for (int j=0; j<indices.Size(); j++)
+   {
+      if (indices[j] > local_num_vars)
+      {
+         MFEM_WARNING("WARNING : " << indices[j] << " > " << local_num_vars);
+      }
+      CF_marker[indices[j]] = -1;
+   }
+
+   // Construct cpts_global array on hypre matrix structure
+   HYPRE_BigInt *cpts_global;
+   hypre_BoomerAMGCoarseParms(MPI_COMM_WORLD, local_num_vars, 1, NULL,
+                              CF_marker, NULL, &cpts_global);
+
+   // Extract submatrix into *submat
+   hypre_ParCSRMatrixExtractSubmatrixFC(A, CF_marker, cpts_global,
+                                        "FF", &submat, threshhold);
+
+   hypre_TFree(cpts_global, HYPRE_MEMORY_HOST);
+   return new HypreParMatrix(submat);
+}
+#endif
+
 HYPRE_Int HypreParMatrix::Mult(HypreParVector &x, HypreParVector &y,
                                double a, double b)
 {
@@ -1422,6 +1469,18 @@ HypreParMatrix* HypreParMatrix::EliminateCols(const Array<int> &cols)
    return new HypreParMatrix(Ae);
 }
 
+/* UW */
+void HypreParMatrix::EliminateCols(const Array<int> &rows_cols,
+                                   const HypreParVector &X,
+                                   HypreParVector &B)
+{
+   Array<HYPRE_Int> rc_sorted;
+   get_sorted_rows_cols(rows_cols, rc_sorted);
+
+   internal::hypre_ParCSRMatrixEliminateCols(
+      A, rc_sorted.Size(), rc_sorted.GetData(), X, B);
+}
+
 void HypreParMatrix::EliminateRows(const Array<int> &rows)
 {
    if (rows.Size() > 0)
@@ -1590,6 +1649,39 @@ void HypreParMatrix::Destroy()
    }
 }
 
+#if MFEM_HYPRE_VERSION >= 21800
+
+void BlockInverseScale(const HypreParMatrix *A, HypreParMatrix *C,
+                       const Vector *b, HypreParVector *d,
+                       int blocksize, BlockInverseScaleJob job)
+{
+   if (job == BlockInverseScaleJob::MATRIX_ONLY ||
+       job == BlockInverseScaleJob::MATRIX_AND_RHS)
+   {
+      hypre_ParCSRMatrix *C_hypre;
+      hypre_ParcsrBdiagInvScal(*A, blocksize, &C_hypre);
+      hypre_ParCSRMatrixDropSmallEntries(C_hypre, 1e-15, 1);
+      C->WrapHypreParCSRMatrix(C_hypre);
+   }
+
+   if (job == BlockInverseScaleJob::RHS_ONLY ||
+       job == BlockInverseScaleJob::MATRIX_AND_RHS)
+   {
+      HypreParVector b_Hypre(A->GetComm(),
+                             A->GetGlobalNumRows(),
+                             b->GetData(), A->GetRowStarts());
+      hypre_ParVector *d_hypre;
+      hypre_ParvecBdiagInvScal(b_Hypre, blocksize, &d_hypre, *A);
+
+      d->WrapHypreParVector(d_hypre);
+      d->SetOwnership(true);
+   }
+}
+
+#endif
+
+#if MFEM_HYPRE_VERSION < 21400
+
 HypreParMatrix *Add(double alpha, const HypreParMatrix &A,
                     double beta,  const HypreParMatrix &B)
 {
@@ -1607,6 +1699,39 @@ HypreParMatrix *Add(double alpha, const HypreParMatrix &A,
    return C;
 }
 
+HypreParMatrix * ParAdd(const HypreParMatrix *A, const HypreParMatrix *B)
+{
+   hypre_ParCSRMatrix * C = internal::hypre_ParCSRMatrixAdd(*A,*B);
+
+   hypre_MatvecCommPkgCreate(C);
+
+   return new HypreParMatrix(C);
+}
+
+#else
+
+HypreParMatrix *Add(double alpha, const HypreParMatrix &A,
+                    double beta,  const HypreParMatrix &B)
+{
+   hypre_ParCSRMatrix *C;
+   hypre_ParcsrAdd(alpha, A, beta, B, &C);
+   hypre_MatvecCommPkgCreate(C);
+
+   return new HypreParMatrix(C);
+}
+
+HypreParMatrix * ParAdd(const HypreParMatrix *A, const HypreParMatrix *B)
+{
+   hypre_ParCSRMatrix *C;
+   hypre_ParcsrAdd(1.0, *A, 1.0, *B, &C);
+
+   hypre_MatvecCommPkgCreate(C);
+
+   return new HypreParMatrix(C);
+}
+
+#endif
+
 HypreParMatrix * ParMult(const HypreParMatrix *A, const HypreParMatrix *B,
                          bool own_matrix)
 {
@@ -1622,15 +1747,6 @@ HypreParMatrix * ParMult(const HypreParMatrix *A, const HypreParMatrix *B,
       C->CopyColStarts();
    }
    return C;
-}
-
-HypreParMatrix * ParAdd(const HypreParMatrix *A, const HypreParMatrix *B)
-{
-   hypre_ParCSRMatrix * C = internal::hypre_ParCSRMatrixAdd(*A,*B);
-
-   hypre_MatvecCommPkgCreate(C);
-
-   return new HypreParMatrix(C);
 }
 
 HypreParMatrix * RAP(const HypreParMatrix *A, const HypreParMatrix *P)
@@ -3027,6 +3143,117 @@ void HypreBoomerAMG::SetElasticityOptions(ParFiniteElementSpace *fespace)
    // See the documentation of SetErrorMode() for more details.
    error_mode = IGNORE_HYPRE_ERRORS;
 }
+
+#if MFEM_HYPRE_VERSION >= 21800
+
+void HypreBoomerAMG::SetAdvectiveOptions(int distanceR,
+                                         const std::string &prerelax,
+                                         const std::string &postrelax)
+{
+   // Hypre parameters
+   int Sabs = 0;
+   int interp_type = 100;
+   int relax_type = 10;
+   int coarsen_type = 6;
+   double strength_tolC = 0.1;
+   double strength_tolR = 0.01;
+   double filter_tolR = 0.0;
+   double filterA_tol = 0.0;
+
+   // Set relaxation on specified grid points
+   int ns_down, ns_up, ns_coarse;
+   if (distanceR > 0)
+   {
+      ns_down = prerelax.length();
+      ns_up = postrelax.length();
+      ns_coarse = 1;
+
+      // Array to store relaxation scheme and pass to Hypre
+      HYPRE_Int **grid_relax_points
+         = (HYPRE_Int **)malloc(4*sizeof(HYPRE_Int *));
+      grid_relax_points[0] = NULL;
+      grid_relax_points[1] = (HYPRE_Int *)malloc(sizeof(HYPRE_Int)*ns_down);
+      grid_relax_points[2] = (HYPRE_Int *)malloc(sizeof(HYPRE_Int)*ns_up);
+      grid_relax_points[3] = (HYPRE_Int *)malloc(sizeof(HYPRE_Int));
+      grid_relax_points[3][0] = 0;
+
+      // set down relax scheme
+      for (unsigned int i = 0; i<ns_down; i++)
+      {
+         if (prerelax[i] == 'F')
+         {
+            grid_relax_points[1][i] = -1;
+         }
+         else if (prerelax[i] == 'C')
+         {
+            grid_relax_points[1][i] = 1;
+         }
+         else if (prerelax[i] == 'A')
+         {
+            grid_relax_points[1][i] = 0;
+         }
+      }
+
+      // set up relax scheme
+      for (unsigned int i = 0; i<ns_up; i++)
+      {
+         if (postrelax[i] == 'F')
+         {
+            grid_relax_points[2][i] = -1;
+         }
+         else if (postrelax[i] == 'C')
+         {
+            grid_relax_points[2][i] = 1;
+         }
+         else if (postrelax[i] == 'A')
+         {
+            grid_relax_points[2][i] = 0;
+         }
+      }
+
+      HYPRE_BoomerAMGSetRestriction(amg_precond, distanceR);
+
+      HYPRE_BoomerAMGSetGridRelaxPoints(amg_precond, grid_relax_points);
+
+      HYPRE_BoomerAMGSetInterpType(amg_precond, interp_type);
+   }
+
+   if (Sabs)
+   {
+      HYPRE_BoomerAMGSetSabs(amg_precond, Sabs);
+   }
+
+   HYPRE_BoomerAMGSetCoarsenType(amg_precond, coarsen_type);
+
+   // does not support aggressive coarsening
+   HYPRE_BoomerAMGSetAggNumLevels(amg_precond, 0);
+
+   HYPRE_BoomerAMGSetStrongThreshold(amg_precond, strength_tolC);
+
+   if (distanceR > 0)
+   {
+      HYPRE_BoomerAMGSetStrongThresholdR(amg_precond, strength_tolR);
+      HYPRE_BoomerAMGSetFilterThresholdR(amg_precond, filter_tolR);
+   }
+
+   if (relax_type > -1)
+   {
+      HYPRE_BoomerAMGSetRelaxType(amg_precond, relax_type);
+   }
+
+   if (distanceR > 0)
+   {
+      HYPRE_BoomerAMGSetCycleNumSweeps(amg_precond, ns_coarse, 3);
+      HYPRE_BoomerAMGSetCycleNumSweeps(amg_precond, ns_down,   1);
+      HYPRE_BoomerAMGSetCycleNumSweeps(amg_precond, ns_up,     2);
+
+      HYPRE_BoomerAMGSetADropTol(amg_precond, filterA_tol);
+      // type = -1: drop based on row inf-norm
+      HYPRE_BoomerAMGSetADropType(amg_precond, -1);
+   }
+}
+
+#endif
 
 HypreBoomerAMG::~HypreBoomerAMG()
 {

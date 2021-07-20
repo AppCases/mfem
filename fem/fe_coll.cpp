@@ -189,6 +189,11 @@ FiniteElementCollection *FiniteElementCollection::New(const char *name)
                                 BasisType::GaussLegendre,
                                 FiniteElement::INTEGRAL);
    }
+   // UW: space-time_prism
+   else if (!strncmp(name, "L2STP_", 3))
+   {
+      fec = new L2_FECollectionST(atoi(name + 7), atoi(name + 3));
+   }
    else if (!strncmp(name, "RT_Trace_", 9))
    {
       fec = new RT_Trace_FECollection(atoi(name + 13), atoi(name + 9));
@@ -2616,6 +2621,106 @@ FiniteElementCollection *NURBSFECollection::GetTraceCollection() const
 {
    MFEM_ABORT("NURBS finite elements can not be statically condensed!");
    return NULL;
+}
+
+// UW
+L2_FECollectionST::L2_FECollectionST(const int p, const int dim, const int btype,
+                                 const int map_type)
+{
+   MFEM_VERIFY(p >= 0, "L2_FECollection requires order >= 0.");
+
+   b_type = BasisType::Check(btype);
+   const char *prefix = NULL;
+//    switch (map_type)
+//    {
+//       case FiniteElement::VALUE:    prefix = "L2";    break;
+//       case FiniteElement::INTEGRAL: prefix = "L2Int"; break;
+//       default:
+//          MFEM_ABORT("invalid map_type: " << map_type);
+//    }
+   prefix = "L2STP";
+   switch (btype)
+   {
+      case BasisType::GaussLegendre:
+         snprintf(d_name, 32, "%s_%dD_P%d", prefix, dim, p);
+         break;
+      default:
+         snprintf(d_name, 32, "%s_T%d_%dD_P%d", prefix, btype, dim, p);
+   }
+
+   for (int g = 0; g < Geometry::NumGeom; g++)
+   {
+      L2_Elements[g] = NULL;
+      Tr_Elements[g] = NULL;
+   }
+   for (int i = 0; i < 2; i++)
+   {
+      SegDofOrd[i] = NULL;
+   }
+   for (int i = 0; i < 6; i++)
+   {
+      TriDofOrd[i] = NULL;
+   }
+   OtherDofOrd = NULL;
+
+   if (dim == 3)
+   {
+      L2_Elements[Geometry::TETRAHEDRON] =
+         new L2_TetrahedronElement(p, btype);
+      L2_Elements[Geometry::CUBE] = new L2_HexahedronElement(p, btype);
+      L2_Elements[Geometry::PRISM] = new L2_WedgeElementST(p, btype);
+      
+      L2_Elements[Geometry::TETRAHEDRON]->SetMapType(map_type);
+      L2_Elements[Geometry::CUBE]->SetMapType(map_type);
+      L2_Elements[Geometry::PRISM]->SetMapType(map_type);
+      // All trace element use the default Gauss-Legendre nodal points
+      Tr_Elements[Geometry::TRIANGLE] = new L2_TriangleElement(p);
+      Tr_Elements[Geometry::SQUARE] = new L2_QuadrilateralElement(p);
+
+      const int TetDof = L2_Elements[Geometry::TETRAHEDRON]->GetDof();
+      const int HexDof = L2_Elements[Geometry::CUBE]->GetDof();
+      const int PriDof = L2_Elements[Geometry::PRISM]->GetDof();
+      const int MaxDof = std::max(TetDof, std::max(PriDof, HexDof));
+      OtherDofOrd = new int[MaxDof];
+      for (int j = 0; j < MaxDof; j++)
+      {
+         OtherDofOrd[j] = j; // for Or == 0
+      }
+   }
+   else
+   {
+      mfem::err << "L2_FECollectionST::L2_FECollectionST : dim = "
+                << dim << endl;
+      mfem_error();
+   }
+}
+
+const int *L2_FECollectionST::DofOrderForOrientation(Geometry::Type GeomType,
+                                                   int Or) const
+{
+   switch (GeomType)
+   {
+      case Geometry::SEGMENT:
+         return (Or > 0) ? SegDofOrd[0] : SegDofOrd[1];
+
+      case Geometry::TRIANGLE:
+         return TriDofOrd[Or%6];
+
+      default:
+         return (Or == 0) ? OtherDofOrd : NULL;
+   }
+}
+
+L2_FECollectionST::~L2_FECollectionST()
+{
+   delete [] OtherDofOrd;
+   delete [] SegDofOrd[0];
+   delete [] TriDofOrd[0];
+   for (int i = 0; i < Geometry::NumGeom; i++)
+   {
+      delete L2_Elements[i];
+      delete Tr_Elements[i];
+   }
 }
 
 }

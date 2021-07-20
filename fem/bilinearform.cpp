@@ -109,6 +109,10 @@ BilinearForm::BilinearForm (FiniteElementSpace * f, BilinearForm * bf, int ps)
    bfbfi = bf->bfbfi;
    bfbfi_marker = bf->bfbfi_marker;
 
+   /* UW */
+   hdgintbfi = bf->hdgintbfi;
+   hdgbdrbfi = bf->hdgbdrbfi;
+   
    AllocMat();
 }
 
@@ -269,6 +273,18 @@ void BilinearForm::AddBdrFaceIntegrator(BilinearFormIntegrator *bfi,
    bfbfi_marker.Append(&bdr_marker);
 }
 
+/* UW */
+void BilinearForm::AddHDGInteriorFaceIntegrator (BilinearFormIntegrator * bfi)
+{
+   hdgintbfi.Append (bfi);
+}
+
+/* UW */
+void BilinearForm::AddHDGBoundaryFaceIntegrator (BilinearFormIntegrator * bfi)
+{
+   hdgbdrbfi.Append (bfi);
+}
+  
 void BilinearForm::ComputeElementMatrix(int i, DenseMatrix &elmat)
 {
    if (element_matrices)
@@ -563,6 +579,58 @@ void BilinearForm::Assemble(int skip_zeros)
 
                bfbfi[k] -> AssembleFaceMatrix (*fe1, *fe2, *tr, elemmat);
                mat -> AddSubMatrix (vdofs, vdofs, elemmat, skip_zeros);
+            }
+         }
+      }
+   }
+
+   /* UW */
+   // Skeleton interior face integrals for HDG
+   if (hdgintbfi.Size())
+   {
+      FaceElementTransformations *ftr;
+      const FiniteElement *face_fe;
+      int nfaces = mesh->GetNumFaces();
+
+      // loop over all the edges
+      for (int i = 0; i < nfaces; i++)
+      {
+         ftr = mesh->GetInteriorFaceTransformations(i); // the transformation of the face
+         fes->GetFaceVDofs(i, vdofs);   // the defrees of freedom related to the face
+         face_fe = fes->GetFaceElement(i);   // point face_fe to the FiniteElement over the edge
+         if (ftr != NULL)
+         {
+            for (int k = 0; k < hdgintbfi.Size(); k++) // Loop over the related interals, but there is only one hdgintbfi right now
+            {
+               hdgintbfi[k] -> AssembleFaceMatrix (*face_fe, *ftr, elemmat); // call AssembleFaceMatrix over the face
+               mat -> AddSubMatrix (vdofs, vdofs, elemmat, skip_zeros);  // assemble the local matrix to the global one, skipping the zeros
+            }
+         }
+      }
+   }
+
+   /* UW */
+   // Skeleton interior face integrals for HDG
+   if (hdgbdrbfi.Size())
+   {
+      FaceElementTransformations *ftr;
+      const FiniteElement *face_fe;
+      int nbdrfaces = fes->GetNBE();
+
+      // loop over all the edges
+      for (int i = 0; i < nbdrfaces; i++)
+      {
+         int face;
+         mesh->GetBdrFaceToEdge(i, &face);
+         ftr = mesh->GetBdrFaceTransformations(i); // the transformation of the face
+         fes->GetFaceVDofs(face, vdofs);   // the defrees of freedom related to the face
+         face_fe = fes->GetFaceElement(face);   // point face_fe to the FiniteElement over the edge
+         if (ftr != NULL)
+         {
+            for (int k = 0; k < hdgbdrbfi.Size(); k++) // Loop over the related interals, but there is only one hdgbdrbfi right now
+            {
+               hdgbdrbfi[k] -> AssembleFaceMatrix (*face_fe, *ftr, elemmat); // call AssembleFaceMatrix over the face
+               mat -> AddSubMatrix (vdofs, vdofs, elemmat, skip_zeros);  // assemble the local matrix to the global one, skipping the zeros
             }
          }
       }
@@ -1060,6 +1128,10 @@ BilinearForm::~BilinearForm()
       for (k=0; k < bbfi.Size(); k++) { delete bbfi[k]; }
       for (k=0; k < fbfi.Size(); k++) { delete fbfi[k]; }
       for (k=0; k < bfbfi.Size(); k++) { delete bfbfi[k]; }
+      /* UW */
+      // Delete skeleton integrals for HDG
+      for (k=0; k < hdgintbfi.Size(); k++) { delete hdgintbfi[k]; }
+      for (k=0; k < hdgbdrbfi.Size(); k++) { delete hdgbdrbfi[k]; }
    }
 
    delete ext;
@@ -1102,6 +1174,13 @@ MixedBilinearForm::MixedBilinearForm (FiniteElementSpace *tr_fes,
 
    assembly = AssemblyLevel::FULL;
    ext = NULL;
+
+   /* UW */
+   sktbdr = mbf->sktbdr;
+   sktint = mbf->sktint;
+   hdgvpintbfi = mbf->hdgvpintbfi;
+   hdgvpbdrbfi = mbf->hdgvpbdrbfi;
+   
 }
 
 void MixedBilinearForm::SetAssemblyLevel(AssemblyLevel assembly_level)
@@ -1248,6 +1327,58 @@ void MixedBilinearForm::AddBdrTraceFaceIntegrator(BilinearFormIntegrator *bfi,
 {
    btfbfi.Append(bfi);
    btfbfi_marker.Append(&bdr_marker);
+}
+
+/* UW */
+void MixedBilinearForm::AddTraceBoundaryFaceIntegrator (BilinearFormIntegrator * bfi)
+{
+   sktbdr.Append (bfi);
+}
+
+/* UW */
+void MixedBilinearForm::AddTraceInteriorFaceIntegrator (BilinearFormIntegrator * bfi)
+{
+   sktint.Append (bfi);
+}
+
+/* UW - GSJ */
+void MixedBilinearForm::AddFSMassIntegrator(BilinearFormIntegrator *bfi,
+                                            Array<int> &bdr_marker)
+{
+    mfsbfi.Append(bfi);
+    mfsbfi_marker.Append(&bdr_marker);
+}
+
+/* UW - GSJ */
+void MixedBilinearForm::AddFSMassIntegrator2(BilinearFormIntegrator *bfi,
+                                             Array<int> &bdr_marker)
+{
+    mfsbfi2.Append(bfi);
+    mfsbfi2_marker.Append(&bdr_marker);
+}
+
+/* UW - GSJ */
+void MixedBilinearForm::AddDerivativeFSIntegrator(BilinearFormIntegrator *bfi)
+{
+    derfsbfi.Append(bfi);
+}
+
+/* UW - GSJ */
+void MixedBilinearForm::AddDerivativeFSIntegrator2(BilinearFormIntegrator *bfi)
+{
+    derfsbfi2.Append(bfi);
+}
+
+/* UW - SR */
+void MixedBilinearForm::AddHDGInteriorFaceIntegrator (BilinearFormIntegrator * bfi)
+{
+   hdgvpintbfi.Append (bfi);
+}
+
+/* UW - SR */
+void MixedBilinearForm::AddHDGBoundaryFaceIntegrator (BilinearFormIntegrator * bfi)
+{
+   hdgvpbdrbfi.Append (bfi);
 }
 
 void MixedBilinearForm::Assemble (int skip_zeros)
@@ -1421,6 +1552,388 @@ void MixedBilinearForm::Assemble (int skip_zeros)
          }
       }
    }
+
+   /* UW */
+   if (sktbdr.Size())
+   {
+      FaceElementTransformations *ftr;
+      Array<int> te_vdofs2;
+      const FiniteElement *trial_face_fe, *test_fe1, *test_fe2;
+
+      int nbdrfaces = mesh->GetNBE();
+      for (int i = 0; i < nbdrfaces; i++)
+      {
+         int face;
+         mesh->GetBdrFaceToEdge(i, &face);
+         ftr = mesh->GetBdrFaceTransformations(i);
+         if (ftr != NULL)
+         {
+            trial_fes->GetFaceVDofs(face, tr_vdofs);
+            test_fes->GetElementVDofs(ftr->Elem1No, te_vdofs);
+            trial_face_fe = trial_fes->GetFaceElement(face);
+            test_fe1 = test_fes->GetFE(ftr->Elem1No);
+            // The test_fe2 object is really a dummy and not used on the
+            // boundaries, but we can't dereference a NULL pointer, and we don't
+            // want to actually make a fake element.
+            test_fe2 = test_fe1;
+            for (int k = 0; k < sktbdr.Size(); k++)
+            {
+                sktbdr[k]->AssembleFaceMatrix(*trial_face_fe, *test_fe1, *test_fe2,
+                                        *ftr, elemmat);
+                mat->AddSubMatrix(te_vdofs, tr_vdofs, elemmat, skip_zeros);
+            }
+         }
+      }
+   }
+
+   /* UW */
+   if (sktint.Size())
+   {
+      FaceElementTransformations *ftr;
+      Array<int> te_vdofs2;
+      const FiniteElement *trial_face_fe, *test_fe1, *test_fe2;
+
+      int nfaces = mesh->GetNumFaces();
+      for (int i = 0; i < nfaces; i++)
+      {
+         ftr = mesh->GetInteriorFaceTransformations(i);
+         if (ftr != NULL)
+         {
+            trial_fes->GetFaceVDofs(i, tr_vdofs);
+            test_fes->GetElementVDofs(ftr->Elem1No, te_vdofs);
+            trial_face_fe = trial_fes->GetFaceElement(i);
+            test_fe1 = test_fes->GetFE(ftr->Elem1No);
+            test_fes->GetElementVDofs(ftr->Elem2No, te_vdofs2);
+            te_vdofs.Append(te_vdofs2);
+            test_fe2 = test_fes->GetFE(ftr->Elem2No);
+            for (int k = 0; k < sktint.Size(); k++)
+            {
+                sktint[k]->AssembleFaceMatrix(*trial_face_fe, *test_fe1, *test_fe2,
+                                        *ftr, elemmat);
+                mat->AddSubMatrix(te_vdofs, tr_vdofs, elemmat, skip_zeros);
+            }
+         }
+      }
+   }
+    
+    /* UW - GSJ */
+    // Mass free surface integrator
+   if (mfsbfi.Size())
+   {
+      Mesh *mesh_trial = trial_fes->GetMesh();
+      const FiniteElement *test_FE;
+      FaceElementTransformations *facetrans;
+      
+//       Array<int> Edge_to_Be;
+//       mesh_trial->GetEdgeToBdrFace(Edge_to_Be);
+      
+      Array<int> bdr_attr_marker(mesh_trial->bdr_attributes.Size() ?
+                                 mesh_trial->bdr_attributes.Max() : 0);
+      bdr_attr_marker = 0;
+      for (int k = 0; k < mfsbfi.Size(); k++)
+      {
+         if (mfsbfi_marker[k] == NULL)
+         {
+            bdr_attr_marker = 1;
+            break;
+         }
+         Array<int> &bdr_marker = *mfsbfi_marker[k];
+         MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+                     "invalid boundary marker for boundary face integrator #"
+                     << k << ", counting from zero");
+         for (int i = 0; i < bdr_attr_marker.Size(); i++)
+         {
+            bdr_attr_marker[i] |= bdr_marker[i];
+         }
+      }
+      // Loop over the bdry elements of M_space (trial space)
+      for (int i = 0; i < trial_fes -> GetNBE(); i++)
+      {
+         const int bdr_attr = mesh_trial->GetBdrAttribute(i); 
+         
+         if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+         
+         int faceN;
+         mesh_trial->GetBdrFaceToEdge(i, &faceN);
+         
+         //test_fes  -> GetBdrElementVDofs (i, te_vdofs);
+         FaceElementTransformations *tr;
+         //int faceN = Edge_to_Be.Find(i); // in case the other does not work
+         
+         
+         // Now this is okay
+         // TODO: using HDG classes by Tamas the matrix is created according to GetFaceVDofs, so
+         // int faceN and mesh_trial->GetBdrFaceToEdge(i, &faceN);
+         // should be called first, then trial_fes->GetFaceVDofs(faceN, tr_vdofs);
+         // This also applies to the RHS
+         
+         tr =  mesh_trial->GetBdrFaceTransformations(i);
+         int ElemInM = tr->Elem1No;
+         
+         int ElemInW = mesh_trial->GetAttribute(ElemInM) - 1; // The index of the space-time element
+         
+         test_FE = test_fes->GetFE(ElemInW);
+         test_fes->GetElementVDofs(ElemInW,te_vdofs);
+         trial_fes->GetElementVDofs(ElemInM,tr_vdofs);
+
+         facetrans = mesh_trial->GetFaceElementTransformations(faceN);
+         eltrans = test_fes -> GetElementTransformation(ElemInW);
+         
+         for (int k = 0; k < mfsbfi.Size(); k++)
+         {
+            if (mfsbfi_marker[k] &&
+               (*mfsbfi_marker[k])[bdr_attr-1] == 0) { continue; }
+            mfsbfi[k]->AssembleElementFaceMatrixFS2 (*trial_fes -> GetFE(tr->Elem1No),
+                                                     *test_FE, *facetrans,
+                                                     *eltrans, elemmat);
+
+            mat -> AddSubMatrix (te_vdofs, tr_vdofs, elemmat, skip_zeros);
+         }
+      }
+   }
+
+   /* UW - GSJ */
+    // Mass free surface integrator 2 (when M is the test space)
+   if (mfsbfi2.Size())
+   {
+      Mesh *mesh_trial = trial_fes->GetMesh();
+      const FiniteElement *test_FE;
+      FaceElementTransformations *facetrans;
+
+//       Array<int> Edge_to_Be;
+//       mesh_trial->GetEdgeToBdrFace(Edge_to_Be);
+      
+      Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+                                 mesh->bdr_attributes.Max() : 0);
+      bdr_attr_marker = 0;
+      for (int k = 0; k < mfsbfi2.Size(); k++)
+      {
+         if (mfsbfi2_marker[k] == NULL)
+         {
+            bdr_attr_marker = 1;
+            break;
+         }
+         Array<int> &bdr_marker = *mfsbfi2_marker[k];
+         MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+                     "invalid boundary marker for boundary face integrator #"
+                     << k << ", counting from zero");
+         for (int i = 0; i < bdr_attr_marker.Size(); i++)
+         {
+            bdr_attr_marker[i] |= bdr_marker[i];
+         }
+      }
+
+      // Loop over the bdry elements of M_space (test space)
+      for (int i = 0; i < test_fes -> GetNBE(); i++)
+      {
+         const int bdr_attr = mesh->GetBdrAttribute(i); 
+         
+         if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+         
+         int faceN;
+         mesh->GetBdrFaceToEdge(i, &faceN);
+
+         //test_fes  -> GetBdrElementVDofs (i, te_vdofs);
+         FaceElementTransformations *tr;
+         //int faceN = Edge_to_Be.Find(i); // in case the other does not work
+         
+         
+         // Now this is okay
+         // TODO: using HDG classes by Tamas the matrix is created according to GetFaceVDofs, so
+         // int faceN and mesh_trial->GetBdrFaceToEdge(i, &faceN);
+         // should be called first, then trial_fes->GetFaceVDofs(faceN, tr_vdofs);
+         // This also applies to the RHS
+         
+         tr =  mesh->GetBdrFaceTransformations(i);
+         int ElemInM = tr->Elem1No;
+         
+         int ElemInW = mesh->GetAttribute(ElemInM) - 1; // The index of the space-time element
+         
+         test_FE = test_fes->GetFE(ElemInM);
+         test_fes->GetElementVDofs(ElemInM,te_vdofs);
+         trial_fes->GetElementVDofs(ElemInW,tr_vdofs);
+         
+         facetrans = mesh->GetFaceElementTransformations(faceN);
+         eltrans = trial_fes -> GetElementTransformation(ElemInW);
+         
+         for (int k = 0; k < mfsbfi2.Size(); k++)
+         {
+            if (mfsbfi2_marker[k] &&
+               (*mfsbfi2_marker[k])[bdr_attr-1] == 0) { continue; }
+            mfsbfi2[k]->AssembleElementFaceMatrixFS2 (*trial_fes -> GetFE(tr->Elem1No),
+                                                     *test_FE, *facetrans,
+                                                     *eltrans, elemmat);
+
+            mat -> AddSubMatrix (te_vdofs, tr_vdofs, elemmat, skip_zeros);
+         }
+      }
+   }
+   
+   /* UW - GSJ */
+   // Derivative FS integrator W is trial, M is test
+   if(derfsbfi.Size())
+   {
+      Mesh *mesh_trial = trial_fes->GetMesh(); // W mesh
+      ElementTransformation *Tr_te;
+      FaceElementTransformations *Tr_tr;
+      
+      // Loop over elements in M
+      for (int i = 0; i < test_fes -> GetNE(); i++)
+      {
+         // I have the number of the space-time element in W
+         int ElemInW = mesh->GetAttribute(i) - 1;
+         
+         // I have the DoFs
+         trial_fes->GetElementVDofs (ElemInW, tr_vdofs);
+         test_fes->GetElementVDofs(i,te_vdofs);
+         
+         // I need the boundary face that ElemInW has
+         int faceNinW = -1;
+         for(int jj = 0; jj < mesh_trial->GetNBE(); jj++)
+         {
+        	 int faceN;
+		     mesh_trial->GetBdrFaceToEdge(jj, &faceN);
+
+        	 FaceElementTransformations *tr = mesh_trial->GetFaceElementTransformations(faceN);
+        	 if(tr->Elem1No == ElemInW)
+        	 {
+        		 faceNinW = faceN;
+        		 break;
+        	 }
+         }
+//         Array<int> faces, cor;
+//         mesh_trial->GetElementFaces(ElemInW,faces,cor);
+//
+//         for(int kk = 0; kk < faces.Size(); kk++)
+//         {
+//             if(!mesh_trial->FaceIsInterior(faces[kk]))
+//             {
+//                 faceNinW = faces[kk];
+//                 break;
+//             }
+//         }
+         
+         Tr_tr = mesh_trial->GetFaceElementTransformations(faceNinW);
+         Tr_te = mesh->GetElementTransformation(i);
+//          eltrans_tr = mesh_trial->GetElementTransformation(ElemInW);
+//          eltrans_tr = mesh_trial->GetElementTransformation(ElemInW);
+         //eltrans_te = mesh->GetElementTransformation(ElemInW);
+         
+         for (int k = 0; k < derfsbfi.Size(); k++)
+         {
+            derfsbfi[k]->AssembleElementFaceMatrixFS2 (*trial_fes -> GetFE(ElemInW),
+                                             *test_fes->GetFE(i),
+                                             *Tr_tr, *Tr_te,
+                                             elemmat);
+            
+            mat -> AddSubMatrix (te_vdofs, tr_vdofs, elemmat, skip_zeros);
+         }
+      }
+   }
+   
+   /* UW - GSJ */
+
+   // Derivative FS integrator M is trial, W is test
+   if(derfsbfi2.Size())
+   {
+	   Mesh *mesh_trial = trial_fes->GetMesh(); // M mesh
+	   ElementTransformation *Tr_tr;
+	   FaceElementTransformations *Tr_te;
+
+	   // Loop over elements in M
+	   for (int i = 0; i < trial_fes -> GetNE(); i++)
+	   {
+		   // I have the number of the space-time element in W
+		   int ElemInW = mesh_trial->GetAttribute(i) - 1;
+
+		   // I have the DoFs
+		   trial_fes->GetElementVDofs (i, tr_vdofs);
+		   test_fes->GetElementVDofs(ElemInW,te_vdofs);
+
+		   // I need the boundary face that ElemInW has
+		   int faceNinW = -1;
+		   for(int jj = 0; jj < mesh->GetNBE(); jj++)
+		   {
+			   int faceN = -1;
+			   mesh->GetBdrFaceToEdge(jj, &faceN);
+
+			   FaceElementTransformations *tr = mesh->GetFaceElementTransformations(faceN);
+			   if(tr->Elem1No == ElemInW)
+			   {
+				   faceNinW = faceN;
+				   break;
+			   }
+		   }
+		   Tr_te = mesh->GetFaceElementTransformations(faceNinW);
+		   Tr_tr = mesh_trial->GetElementTransformation(i);
+
+		for (int k = 0; k < derfsbfi2.Size(); k++)
+		{
+		   derfsbfi2[k]->AssembleElementFaceMatrixFS2(*trial_fes -> GetFE(i),
+													  *test_fes->GetFE(ElemInW),
+													  *Tr_te, *Tr_tr,
+													  elemmat);
+
+		   mat -> AddSubMatrix (te_vdofs, tr_vdofs, elemmat, skip_zeros);
+		}
+	 }
+	}
+
+   /* UW - SR*/
+   if (hdgvpintbfi.Size())
+   {
+      FaceElementTransformations *ftr;
+      const FiniteElement *trial_face_fe, *test_face_fe;
+
+      int nfaces = mesh->GetNumFaces();
+      for (int i = 0; i < nfaces; i++)
+      {
+         ftr = mesh->GetInteriorFaceTransformations(i);
+         if (ftr != NULL)
+         {
+            trial_fes->GetFaceVDofs(i, tr_vdofs);
+            test_fes->GetFaceVDofs(i, te_vdofs);
+            trial_face_fe = trial_fes->GetFaceElement(i);
+            test_face_fe = test_fes->GetFaceElement(i);
+            for (int k = 0; k < hdgvpintbfi.Size(); k++)
+            {
+                hdgvpintbfi[k]->AssembleFaceMatrix(*trial_face_fe, *test_face_fe,
+						   *ftr, elemmat);
+                mat->AddSubMatrix(te_vdofs, tr_vdofs, elemmat, skip_zeros);
+            }
+         }
+      }
+   }
+
+
+   /* UW - SR*/
+   if (hdgvpbdrbfi.Size())
+   {
+      FaceElementTransformations *ftr;
+      const FiniteElement *trial_face_fe, *test_face_fe;
+
+      int nbdrfaces = mesh->GetNBE();
+      for (int i = 0; i < nbdrfaces; i++)
+      {
+	 int face;
+	 mesh->GetBdrFaceToEdge(i, &face);
+         ftr = mesh->GetBdrFaceTransformations(i);
+         if (ftr != NULL)
+         {
+            trial_fes->GetFaceVDofs(face, tr_vdofs);
+            test_fes->GetFaceVDofs(face, te_vdofs);
+            trial_face_fe = trial_fes->GetFaceElement(face);
+            test_face_fe = test_fes->GetFaceElement(face);
+            for (int k = 0; k < hdgvpbdrbfi.Size(); k++)
+            {
+                hdgvpbdrbfi[k]->AssembleFaceMatrix(*trial_face_fe, *test_face_fe,
+						   *ftr, elemmat);
+                mat->AddSubMatrix(te_vdofs, tr_vdofs, elemmat, skip_zeros);
+            }
+         }
+      }
+   }
+   
 }
 
 void MixedBilinearForm::ConformingAssemble()
@@ -1682,6 +2195,21 @@ MixedBilinearForm::~MixedBilinearForm()
       for (i = 0; i < bbfi.Size(); i++) { delete bbfi[i]; }
       for (i = 0; i < tfbfi.Size(); i++) { delete tfbfi[i]; }
       for (i = 0; i < btfbfi.Size(); i++) { delete btfbfi[i]; }
+
+      /* UW */
+      for (i = 0; i < sktint.Size(); i++) { delete sktint[i]; }
+      for (i = 0; i < sktbdr.Size(); i++) { delete sktbdr[i]; }
+      
+      /* UW - SR */
+      for (i = 0; i < hdgvpintbfi.Size(); i++) { delete hdgvpintbfi[i]; }
+      for (i = 0; i < hdgvpbdrbfi.Size(); i++) { delete hdgvpbdrbfi[i]; }
+
+      /* UW - GSJ */
+      for (i = 0; i < mfsbfi.Size(); i++) { delete mfsbfi[i]; }
+      for (i = 0; i < mfsbfi2.Size(); i++) { delete mfsbfi2[i]; }
+      for (i = 0; i < derfsbfi.Size(); i++) { delete derfsbfi[i]; }
+      for (i = 0; i < derfsbfi2.Size(); i++) { delete derfsbfi2[i]; }
+      
    }
    delete ext;
 }

@@ -834,6 +834,10 @@ public:
    void GetElementVertices(int i, Array<int> &v) const
    { elements[i]->GetVertices(v); }
 
+   /* UW */
+   void SetElementVertices(int i, Array<int> &v) const
+   { elements[i]->SetVertices(v); }
+  
    /// Returns the indices of the vertices of boundary element i.
    void GetBdrElementVertices(int i, Array<int> &v) const
    { boundary[i]->GetVertices(v); }
@@ -979,6 +983,15 @@ public:
 
    FaceElementTransformations *GetBdrFaceTransformations (int BdrElemNo);
 
+   /* UW */
+   void GetBdrFaceToEdge(int BdrElemNo, int *fe);
+   
+   /* UW */
+   Table* GetElementEdges();
+   
+   /* UW */
+   void GetEdgeToBdrFace(Array<int> &Edge_to_Be);
+  
    /// Return true if the given face is interior. @sa FaceIsTrueInterior().
    bool FaceIsInterior(int FaceNo) const
    {
@@ -1249,6 +1262,9 @@ public:
    double GetElementSize(int i, const Vector &dir);
 
    double GetElementVolume(int i);
+
+   /* UW */
+   double GetFaceVolume(int i);
 
    /// Returns the minimum and maximum corners of the mesh bounding box.
    /** For high-order meshes, the geometry is first refined @a ref times. */

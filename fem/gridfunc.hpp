@@ -19,6 +19,8 @@
 #include <limits>
 #include <ostream>
 #include <string>
+/* UW */
+#include "lininteg.hpp"
 
 namespace mfem
 {
@@ -64,6 +66,10 @@ protected:
        degree of freedom. */
    void ProjectDiscCoefficient(VectorCoefficient &coeff, Array<int> &dof_attr);
 
+   /* UW */
+   // This array is needed for ST computations
+   // REMANE
+   Array<int> BoundaryElementIndex;
    void Destroy();
 
 public:
@@ -144,6 +150,15 @@ public:
    virtual double GetValue(int i, const IntegrationPoint &ip,
                            int vdim = 1) const;
 
+   /* UW - GSJ to evaluate facet variables on boundary face */ 
+   virtual double GetValueBdrHDG(int i,
+                                 const IntegrationPoint &ip, 
+                                 int vdim = 1) const;
+
+   /* UW - to evaluate facet variables */
+   virtual double GetValueFacet(int i, const IntegrationPoint &ip,
+                           int vdim = 1) const;
+  
    void GetVectorValue(int i, const IntegrationPoint &ip, Vector &val) const;
 
    void GetValues(int i, const IntegrationRule &ir, Vector &vals,
@@ -198,7 +213,10 @@ public:
 
    double GetDivergence(ElementTransformation &tr) const;
 
-   void GetCurl(ElementTransformation &tr, Vector &curl) const;
+   /* UW */
+   double GetDivergenceST(ElementTransformation &tr);
+
+  void GetCurl(ElementTransformation &tr, Vector &curl) const;
 
    void GetGradient(ElementTransformation &tr, Vector &grad) const;
 
@@ -231,6 +249,26 @@ public:
        projection matrix. */
    void ProjectGridFunction(const GridFunction &src);
 
+   /* UW */
+   void ProjectCoefficientSkeletonDG(Coefficient &coeff);
+   void ProjectCoefficientSkeletonDGVector(VectorCoefficient &vcoeff);
+   void ProjectCoefficientSkeletonDGVectorST(VectorCoefficient &vcoeff);
+   
+   /* UW */
+   void ProjectCoefficientSkeleton(Coefficient &coeff);
+   void ProjectCoefficientSkeletonVector(VectorCoefficient &vcoeff);
+
+   /* UW */
+   /** @brief Creates an array that has length eual to the number of 
+    * different element attributes. Then it matches the attributes to
+    * the last element index that has the given attribute
+   */
+   void ComputeBoundaryElementIndex();
+   int ReturnBoundaryElementIndex(int attribute)
+   {
+      return BoundaryElementIndex[attribute];
+   }
+  
    virtual void ProjectCoefficient(Coefficient &coeff);
 
    // call fes -> BuildDofToArrays() before using this projection
@@ -319,6 +357,12 @@ public:
                                  const IntegrationRule *irs[] = NULL) const
    { return ComputeLpError(2.0, exsol, NULL, irs); }
 
+   /* UW */
+   double ComputeL2ErrorMinMean(Coefficient &exsol, 
+                                const double mean,
+                                const IntegrationRule *irs[] = NULL) const                                
+   { return ComputeLpErrorMinMean(2.0, exsol, mean, NULL, irs); }
+ 
    virtual double ComputeL2Error(Coefficient *exsol[],
                                  const IntegrationRule *irs[] = NULL) const;
 
@@ -326,6 +370,16 @@ public:
                                  const IntegrationRule *irs[] = NULL,
                                  Array<int> *elems = NULL) const;
 
+   /* UW */
+   double ComputeDivError(const IntegrationRule *irs[]);
+   double ComputeDivErrorST(const IntegrationRule *irs[]);
+
+   /* UW */
+   double ComputeMean(const IntegrationRule *irs[]) const;
+
+   /* UW - for facets computing the mean over all faces */
+   double ComputeMeanFacet(const IntegrationRule *irs[]) const;
+  
    virtual double ComputeH1Error(Coefficient *exsol, VectorCoefficient *exgrad,
                                  Coefficient *ell_coef, double Nu,
                                  int norm_type) const;
@@ -387,6 +441,36 @@ public:
                                         const IntegrationRule *irs[] = NULL
                                        ) const
    { ComputeElementLpErrors(infinity(), exsol, error, NULL, irs); }
+
+   /* UW */
+   double ComputeMeanLpError(const double p, Coefficient &exsol,
+                             const IntegrationRule *irs[] = NULL) const;
+                             
+   /* UW - Lp error for facets */
+   virtual double ComputeLpErrorFacets(const double p, Coefficient &exsol,
+                                       Coefficient *weight = NULL,
+                                       const IntegrationRule *irs[] = NULL) const;
+   
+   /* UW - L2 error for facets */
+   virtual double ComputeL2ErrorFacets(Coefficient &exsol,
+                                 const IntegrationRule *irs[] = NULL) const
+   { return ComputeLpErrorFacets(2.0, exsol, NULL, irs); }
+
+   /* UW - Lp error for facets over the bdr with given attributes */
+   virtual double ComputeLpErrorFacetsBdr(const double p, Coefficient &exsol,
+                                          Array<int> &bdr_attr_marker,
+                                          Coefficient *weight = NULL,
+                                          const IntegrationRule *irs[] = NULL) const;
+   /* UW - L2 error for facets over the bdr with given attributes */
+   virtual double ComputeL2ErrorFacetsBdr(Coefficient &exsol,
+                                          Array<int> &bdr_attr_marker,
+                                          const IntegrationRule *irs[] = NULL) const
+   { return ComputeLpErrorFacetsBdr(2.0, exsol, bdr_attr_marker, NULL, irs); }
+     
+   /* UW */
+   double ComputeLpErrorMinMean(const double p, Coefficient &exsol, const double mean,
+                                Coefficient *weight = NULL,
+                                const IntegrationRule *irs[] = NULL) const;
 
    /** When given a vector weight, compute the pointwise (scalar) error as the
        dot product of the vector error with the vector weight. Otherwise, the

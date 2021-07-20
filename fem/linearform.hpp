@@ -50,6 +50,34 @@ protected:
    /// The reference coordinates where the centers of the delta functions lie
    Array<IntegrationPoint> dlfi_delta_ip;
 
+   /* UW - GSJ */
+   Array<LinearFormIntegrator*> fsi;
+   Array<Array<int>*>           fsi_marker;
+   
+   /* UW - GSJ */
+   Array<LinearFormIntegrator*> fsti;
+   Array<Array<int>*>           fsti_marker;
+
+   /* UW - GSJ */
+   Array<LinearFormIntegrator*> tlqi;
+   Array<Array<int>*>           tlqi_marker;
+
+   /* UW */
+   /// Set of Boundary Face Integrators on Prevoius TimeLevel to be applied.
+   Array<LinearFormIntegrator*> tllfi;
+   /// Set of Boundary Face Integrators on Prevoius TimeLevel to be applied - with rotation
+   Array<LinearFormIntegrator*> tlrotlfi;
+
+   /* UW */
+   /// Set of Boundary Skeleton Integrators.
+   Array<LinearFormIntegrator*> bdrsklneufi;
+   Array<Array<int>*>           bdrsklneufi_marker;
+
+   /* UW */
+   /// Set of Boundary Skeleton Integrators with Mesh.
+   Array<LinearFormIntegrator*> bdrsklneu_mesh_fi;
+   Array<Array<int>*>           bdrsklneu_mesh_fi_marker;
+  
    /// If true, the delta locations are not (re)computed during assembly.
    bool HaveDeltaLocations() { return (dlfi_delta_elem_id.Size() != 0); }
 
@@ -132,6 +160,34 @@ public:
    void AddBdrFaceIntegrator(LinearFormIntegrator *lfi,
                              Array<int> &bdr_attr_marker);
 
+   /* UW - GSJ */
+   // Adds new FreeSurfaceInitialValueW
+   void AddFreeSurfaceIntegrator(LinearFormIntegrator *lfi,
+                                 Array<int> &bdr_attr_marker);
+   void AddFreeSurfaceTraceIntegrator(LinearFormIntegrator *lfi,
+		   	   	   	   	   	   	 Array<int> &bdr_attr_marker);
+   void AddTimeLevelQIntegrator(LinearFormIntegrator *lfi, Array<int> &bdr_attr_marker);
+   
+   /* UW */
+   /// Adds new Time Level Integrator.
+   void AddTimeLevelIntegrator (LinearFormIntegrator * lfi);
+   /// Adds new Time Level Integrator for the sliding grid.
+   void AddTimeLevelRotationIntegrator (LinearFormIntegrator * lfi);
+   
+   /* UW */
+   /// Adds new Boundary Face Integrator with face number.
+   void AddSktBoundaryNeumannIntegrator (LinearFormIntegrator * lfi);
+
+   void AddSktBoundaryNeumannIntegrator (LinearFormIntegrator * lfi,
+                             Array<int> &bdr_attr_marker);
+
+   /* UW */
+   /// Adds new Boundary Face Integrator with face number.
+   void AddSktBoundaryNeumannIntegratorWithMesh (LinearFormIntegrator * lfi);
+
+   void AddSktBoundaryNeumannIntegratorWithMesh (LinearFormIntegrator * lfi,
+                             Array<int> &bdr_attr_marker);
+  
    /** @brief Access all integrators added with AddDomainIntegrator() which are
        not DeltaLFIntegrator%s or they are DeltaLFIntegrator%s with non-delta
        coefficients. */

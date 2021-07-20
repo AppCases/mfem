@@ -42,6 +42,9 @@ protected:
 
    void AssembleSharedFaces(int skip_zeros = 1);
 
+   /* UW */
+   void AssembleSharedHDGFaces(int skip_zeros = 1);
+  
 private:
    /// Copy construction is not supported; body is undefined.
    ParBilinearForm(const ParBilinearForm &);
@@ -89,7 +92,10 @@ public:
    /// Assemble the local matrix
    void Assemble(int skip_zeros = 1);
 
-   /// Returns the matrix assembled on the true dofs, i.e. P^t A P.
+   /* UW */
+   void AssembleInverse(int skip_zeros = 1);
+
+  /// Returns the matrix assembled on the true dofs, i.e. P^t A P.
    /** The returned matrix has to be deleted by the caller. */
    HypreParMatrix *ParallelAssemble() { return ParallelAssemble(mat); }
 
@@ -195,6 +201,9 @@ protected:
    /// Auxiliary objects used in TrueAddMult().
    mutable ParGridFunction X, Y;
 
+   /* UW */
+   void AssembleSharedHDGFaces(int skip_zeros = 1);
+  
    /// Matrix and eliminated matrix
    OperatorHandle p_mat, p_mat_e;
 
@@ -219,6 +228,10 @@ public:
       test_pfes  = test_fes;
    }
 
+   /* UW */
+   /// Assemble the local matrix
+   void Assemble(int skip_zeros = 1);
+  
    /** @brief Create a ParMixedBilinearForm on the given FiniteElementSpace%s
        @a trial_fes and @a test_fes, using the same integrators as the
        ParMixedBilinearForm @a mbf.
@@ -268,6 +281,11 @@ public:
    /// Compute y += a (P^t A P) x, where x and y are vectors on the true dofs
    void TrueAddMult(const Vector &x, Vector &y, const double a = 1.0) const;
 
+   /* UW */
+   void ParallelEliminateTrialDofs(const Array<int> &bdr_attr_is_ess,
+                                   HypreParMatrix &A, const HypreParVector &X,
+                                   HypreParVector &B) const;
+  
    virtual ~ParMixedBilinearForm() { }
 };
 

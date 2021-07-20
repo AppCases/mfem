@@ -68,7 +68,7 @@ void LinearForm::AddBdrFaceIntegrator (LinearFormIntegrator * lfi)
    flfi.Append(lfi);
    flfi_marker.Append(NULL); // NULL -> all attributes are active
 }
-
+  
 void LinearForm::AddBdrFaceIntegrator(LinearFormIntegrator *lfi,
                                       Array<int> &bdr_attr_marker)
 {
@@ -76,6 +76,71 @@ void LinearForm::AddBdrFaceIntegrator(LinearFormIntegrator *lfi,
    flfi_marker.Append(&bdr_attr_marker);
 }
 
+/* UW - GSJ */
+void LinearForm::AddFreeSurfaceIntegrator(LinearFormIntegrator *lfi,
+                                          Array<int> &bdr_attr_marker)
+{
+    fsi.Append(lfi);
+    fsi_marker.Append(&bdr_attr_marker);
+}
+
+void LinearForm::AddFreeSurfaceTraceIntegrator(LinearFormIntegrator *lfi,
+                                          Array<int> &bdr_attr_marker)
+{
+    fsti.Append(lfi);
+    fsti_marker.Append(&bdr_attr_marker);
+}
+
+void LinearForm::AddTimeLevelQIntegrator(LinearFormIntegrator *lfi,
+										Array<int> &bdr_attr_marker)
+{
+	tlqi.Append(lfi);
+	tlqi_marker.Append(&bdr_attr_marker);
+}
+/* UW - GSJ ends */
+
+/* UW */
+void LinearForm::AddTimeLevelIntegrator (LinearFormIntegrator * lfi)
+{
+   tllfi.Append (lfi);
+}
+
+/* UW */
+void LinearForm::AddTimeLevelRotationIntegrator (LinearFormIntegrator * lfi)
+{
+   tlrotlfi.Append (lfi);
+}
+
+/* UW */
+void LinearForm::AddSktBoundaryNeumannIntegrator(LinearFormIntegrator * lfi)
+{
+   bdrsklneufi.Append (lfi);
+   bdrsklneufi_marker.Append(NULL); // NULL -> all attributes are active
+}
+
+/* UW */
+void LinearForm::AddSktBoundaryNeumannIntegrator(LinearFormIntegrator * lfi,
+                                                 Array<int> &bdr_attr_marker)
+{
+   bdrsklneufi.Append (lfi);
+   bdrsklneufi_marker.Append(&bdr_attr_marker); // NULL -> all attributes are active
+}
+
+/* UW */
+void LinearForm::AddSktBoundaryNeumannIntegratorWithMesh (LinearFormIntegrator * lfi)
+{
+   bdrsklneu_mesh_fi.Append (lfi);
+   bdrsklneu_mesh_fi_marker.Append(NULL); // NULL -> all attributes are active
+}
+
+/* UW */
+void LinearForm::AddSktBoundaryNeumannIntegratorWithMesh (LinearFormIntegrator * lfi,
+                                              Array<int> &bdr_attr_marker)
+{
+   bdrsklneu_mesh_fi.Append (lfi);
+   bdrsklneu_mesh_fi_marker.Append(&bdr_attr_marker); // NULL -> all attributes are active
+}
+  
 void LinearForm::Assemble()
 {
    Array<int> vdofs;
@@ -194,6 +259,291 @@ void LinearForm::Assemble()
          }
       }
    }
+
+   /* UW - GSJ */
+   if (fsi.Size())
+   {      
+      Mesh *mesh = fes->GetMesh(); // This is meshM
+      FaceElementTransformations *tr;
+      
+      // Which boundary attributes need to be processed?
+      Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+                                 mesh->bdr_attributes.Max() : 0);
+      bdr_attr_marker = 0;
+      for (int k = 0; k < fsi.Size(); k++)
+      {
+         if (fsi_marker[k] == NULL)
+         {
+            bdr_attr_marker = 1;
+            break;
+         }
+         Array<int> &bdr_marker = *fsi_marker[k];
+         MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+                     "invalid boundary marker for boundary face integrator #"
+                     << k << ", counting from zero");
+         for (int i = 0; i < bdr_attr_marker.Size(); i++)
+         {
+            bdr_attr_marker[i] |= bdr_marker[i];
+         }
+      }
+
+      for (i = 0; i < mesh->GetNBE(); i++)
+      {
+         const int bdr_attr = mesh->GetBdrAttribute(i);
+
+         if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+
+         tr = mesh -> GetBdrFaceTransformations (i);
+
+
+
+		 fes -> GetElementVDofs (tr -> Elem1No, vdofs);
+
+         for (int k = 0; k < fsi.Size(); k++)
+         {
+            if (fsi_marker[k] &&
+                (*fsi_marker[k])[bdr_attr-1] == 0) { continue; }
+
+            fsi[k] -> AssembleRHSElementVectWithMesh(*fes->GetFE(tr -> Elem1No), *mesh,
+                                                                  *tr, i, elemvect);
+
+            AddElementVector (vdofs, elemvect);
+         }
+      }
+   }
+   
+   if (fsti.Size())
+   {
+	   Mesh *mesh = fes->GetMesh(); // This is meshW
+	   FaceElementTransformations *tr;
+
+	   // Which boundary attributes need to be processed?
+	   Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+								mesh->bdr_attributes.Max() : 0);
+	   bdr_attr_marker = 0;
+	   for (int k = 0; k < fsti.Size(); k++)
+	   {
+		   if (fsti_marker[k] == NULL)
+		   {
+			   bdr_attr_marker = 1;
+			   break;
+		   }
+		   Array<int> &bdr_marker = *fsti_marker[k];
+		   MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+				   "invalid boundary marker for boundary face integrator #"
+						<< k << ", counting from zero");
+		   for (int i = 0; i < bdr_attr_marker.Size(); i++)
+		   {
+			   bdr_attr_marker[i] |= bdr_marker[i];
+		   }
+	   }
+
+	   for (i = 0; i < mesh->GetNBE(); i++)
+	   {
+		   const int bdr_attr = mesh->GetBdrAttribute(i);
+
+		   if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+
+		   tr = mesh -> GetBdrFaceTransformations (i);
+
+		   int face;
+		   mesh->GetBdrFaceToEdge(i,&face);
+		   fes -> GetFaceVDofs (face, vdofs);
+
+		   for (int k = 0; k < fsti.Size(); k++)
+		   {
+			   if (fsti_marker[k] &&
+				  (*fsti_marker[k])[bdr_attr-1] == 0) { continue; }
+
+			   fsti[k] -> AssembleRHSElementVectWithMesh(*fes->GetFaceElement(face), *mesh,
+					   	   	   	   	   	   	   	   	   	 *tr, i, elemvect);
+
+			   AddElementVector (vdofs, elemvect);
+		   }
+	   }
+   }
+
+   if (tlqi.Size())
+   {
+   	   Mesh *mesh = fes->GetMesh(); // This is meshW
+   	   FaceElementTransformations *tr;
+
+   	   // Which boundary attributes need to be processed?
+   	   Array<int> bdr_attr_marker(mesh->bdr_attributes.Size() ?
+   								mesh->bdr_attributes.Max() : 0);
+   	   bdr_attr_marker = 0;
+   	   for (int k = 0; k < tlqi.Size(); k++)
+   	   {
+   		   if (tlqi_marker[k] == NULL)
+   		   {
+   			   bdr_attr_marker = 1;
+   			   break;
+   		   }
+   		   Array<int> &bdr_marker = *tlqi_marker[k];
+   		   MFEM_ASSERT(bdr_marker.Size() == bdr_attr_marker.Size(),
+   				   "invalid boundary marker for boundary face integrator #"
+   						<< k << ", counting from zero");
+   		   for (int i = 0; i < bdr_attr_marker.Size(); i++)
+   		   {
+   			   bdr_attr_marker[i] |= bdr_marker[i];
+   		   }
+   	   }
+
+   	   for (i = 0; i < mesh->GetNBE(); i++)
+   	   {
+   		   const int bdr_attr = mesh->GetBdrAttribute(i);
+
+   		   if (bdr_attr_marker[bdr_attr-1] == 0) { continue; }
+
+   		   tr = mesh -> GetBdrFaceTransformations (i);
+   		   if (tr != NULL)
+		   {
+   			   int face;
+			   mesh->GetBdrFaceToEdge(i,&face);
+			   fes -> GetFaceVDofs (face, vdofs);
+			   fes -> GetElementVDofs (tr -> Elem1No, vdofs);
+   			   for (int k = 0; k < tlqi.Size(); k++)
+			   {
+   				   if (tlqi_marker[k] &&
+   						   (*tlqi_marker[k])[bdr_attr-1] == 0) { continue; }
+
+				   tlqi[k] -> AssembleRHSElementVectWithMesh(*fes->GetFE(tr -> Elem1No), *mesh,
+															 *tr, tr -> Elem1No, elemvect);
+
+				   AddElementVector (vdofs, elemvect);
+			   }
+		   }
+
+
+   	   }
+   }
+   /* UW - GSJ ends */
+
+   /* UW */
+   if (tllfi.Size())
+   {
+      FaceElementTransformations *tr;
+      Mesh *mesh = fes -> GetMesh();
+      for (i = 0; i < mesh -> GetNBE(); i++)
+      {
+         tr = mesh -> GetBdrFaceTransformations (i);
+         if (tr != NULL)
+         {
+            fes -> GetElementVDofs (tr -> Elem1No, vdofs);
+            for (int k = 0; k < tllfi.Size(); k++)
+            {
+               tllfi[k] -> AssembleRHSElementVectWithElementIndex (*fes->GetFE(tr -> Elem1No),
+                                                                  *tr, i, elemvect);
+               AddElementVector (vdofs, elemvect);
+            }
+         }
+      }
+   }
+   
+   /* UW */
+   if (tlrotlfi.Size())
+   {
+      FaceElementTransformations *tr;
+      Mesh *mesh = fes -> GetMesh();
+      for (i = 0; i < mesh -> GetNBE(); i++)
+      {
+         tr = mesh -> GetBdrFaceTransformations (i);
+         if (tr != NULL)
+         {
+            fes -> GetElementVDofs (tr -> Elem1No, vdofs);
+            for (int k = 0; k < tlrotlfi.Size(); k++)
+            {
+               tlrotlfi[k] -> AssembleRHSElementVectWithMesh (*fes->GetFE(tr -> Elem1No), *mesh,
+                                                                  *tr, i, elemvect);
+               AddElementVector (vdofs, elemvect);
+            }
+         }
+      }
+   }
+   
+   /* UW */
+   if (bdrsklneufi.Size())
+   {
+      FaceElementTransformations *ftr;
+      const FiniteElement *face_fe;
+      int nbdrfaces = fes->GetNBE();
+      Mesh *mesh = fes -> GetMesh();
+      
+      for (i = 0; i < nbdrfaces; i++)
+      {
+         int face;
+         mesh->GetBdrFaceToEdge(i, &face);
+         ftr = mesh->GetFaceElementTransformations(face); // the transformation of the face
+         fes->GetFaceVDofs(face, vdofs);   // the degrees of freedom related to the face
+         face_fe = fes->GetFaceElement(face);   // point face_fe to the FiniteElement over the edge
+            
+         if (ftr != NULL)
+         {
+            for (int k = 0; k < bdrsklneufi.Size(); k++) // Loop over the related interals
+            {
+               int compute = 0;
+               if (bdrsklneufi_marker[k] == NULL)
+                  compute = 1;
+               else
+               {
+                  Array<int> &bdr_marker = *bdrsklneufi_marker[k];
+                  const int bdr_attr = mesh->GetBdrAttribute(i);
+                  if (bdr_marker[bdr_attr-1] == 1)
+                     compute = 1;
+               }
+               if (compute)
+               {
+                  bdrsklneufi[k] -> AssembleRHSElementVect (*face_fe, *ftr, elemvect);
+                  AddElementVector (vdofs, elemvect);
+               }
+            }
+         }
+	   
+      }
+   }
+
+
+   /* UW */
+   if (bdrsklneu_mesh_fi.Size())
+   {
+      FaceElementTransformations *ftr;
+      const FiniteElement *face_fe;
+      int nbdrfaces = fes->GetNBE();
+      Mesh *mesh = fes -> GetMesh();
+      
+      for (i = 0; i < nbdrfaces; i++)
+      {
+         int face;
+         mesh->GetBdrFaceToEdge(i, &face);
+         ftr = mesh->GetBdrFaceTransformations(i); // the transformation of the face
+         fes->GetFaceVDofs(face, vdofs);   // the degrees of freedom related to the face
+         face_fe = fes->GetFaceElement(face);   // point face_fe to the FiniteElement over the edge
+            
+         if (ftr != NULL)
+         {
+            for (int k = 0; k < bdrsklneu_mesh_fi.Size(); k++) // Loop over the related interals
+            {
+               int compute = 0;
+               if (bdrsklneu_mesh_fi_marker[k] == NULL)
+                  compute = 1;
+               else
+               {
+                  Array<int> &bdr_marker = *bdrsklneu_mesh_fi_marker[k];
+                  const int bdr_attr = mesh->GetBdrAttribute(i);
+                  if (bdr_marker[bdr_attr-1] == 1)
+                     compute = 1;
+               }
+               if (compute)
+               {
+                  bdrsklneu_mesh_fi[k] -> AssembleRHSElementVectWithMesh (*face_fe, *mesh, 
+                                                                          *ftr, i, elemvect);
+                  AddElementVector (vdofs, elemvect);
+               }
+            }
+         }
+	   
+      }
+   }   
 }
 
 void LinearForm::Update(FiniteElementSpace *f, Vector &v, int v_offset)
@@ -265,6 +615,15 @@ LinearForm::~LinearForm()
       for (k=0; k < dlfi.Size(); k++) { delete dlfi[k]; }
       for (k=0; k < blfi.Size(); k++) { delete blfi[k]; }
       for (k=0; k < flfi.Size(); k++) { delete flfi[k]; }
+      /*UW*/
+      for (k=0; k < tllfi.Size(); k++) { delete tllfi[k]; }
+      for (k=0; k < tlrotlfi.Size(); k++) { delete tlrotlfi[k]; }
+      for (k=0; k < bdrsklneufi.Size(); k++) { delete bdrsklneufi[k]; }
+      for (k=0; k < bdrsklneu_mesh_fi.Size(); k++) { delete bdrsklneu_mesh_fi[k]; }
+      /*UW - GSJ*/
+      for (k=0; k < fsi.Size(); k++) { delete fsi[k]; }
+      for (k=0; k < fsti.Size(); k++) { delete fsti[k]; }
+      for (k=0; k < tlqi.Size(); k++) { delete tlqi[k]; }
    }
 }
 

@@ -319,6 +319,43 @@ void ParGridFunction::ProjectCoefficient(Coefficient &coeff)
    }
 }
 
+/* UW */
+void ParGridFunction::ProjectCoefficientSkeleton(Coefficient &coeff)
+{
+   DeltaCoefficient *delta_c = dynamic_cast<DeltaCoefficient *>(&coeff);
+
+   if (delta_c == NULL)
+   {
+      GridFunction::ProjectCoefficientSkeleton(coeff);
+   }
+   else
+   {
+      double loc_integral, glob_integral;
+
+      ProjectDeltaCoefficient(*delta_c, loc_integral);
+
+      MPI_Allreduce(&loc_integral, &glob_integral, 1, MPI_DOUBLE, MPI_SUM,
+                    pfes->GetComm());
+
+      (*this) *= (delta_c->Scale() / glob_integral);
+   }
+}
+
+/* UW */
+void ParGridFunction::ComputeBoundaryElementIndex()
+{
+   ParMesh *pmesh = pfes->GetParMesh();
+   int meshNE = pmesh->GetNE();
+   
+   BoundaryElementIndex.SetSize(6*meshNE+1);
+   BoundaryElementIndex = -1;
+   
+   for (int i = 0; i < meshNE; i++)
+   {
+      BoundaryElementIndex[pmesh->GetAttribute(i)] = i;
+   }
+}
+  
 void ParGridFunction::ProjectDiscCoefficient(VectorCoefficient &coeff)
 {
    // local maximal element attribute for each dof
@@ -628,6 +665,15 @@ void ParGridFunction::SaveAsOne(std::ostream &out)
    delete [] nedofs;
    delete [] nfdofs;
    delete [] nrdofs;
+}
+
+/* UW */
+double GlobalMean(double loc_mean, MPI_Comm comm)
+{
+   double glob_mean;
+   MPI_Allreduce(&loc_mean, &glob_mean, 1, MPI_DOUBLE, MPI_SUM, comm);
+
+   return glob_mean;
 }
 
 double GlobalLpNorm(const double p, double loc_norm, MPI_Comm comm)

@@ -140,6 +140,20 @@ HYPRE_Int
 hypre_ParCSRMatrixSetConstantValues(hypre_ParCSRMatrix *A,
                                     HYPRE_Complex       value);
 
+/* UW */
+void hypre_CSRMatrixEliminateCols(hypre_CSRMatrix *A,
+                                 HYPRE_Int nrows_to_eliminate,
+                                 HYPRE_Int *rows_to_eliminate,
+                                 hypre_Vector *X,
+                                 hypre_Vector *B);
+
+/* UW */
+void hypre_ParCSRMatrixEliminateCols(hypre_ParCSRMatrix *A,
+                                    HYPRE_Int ncols_to_elim,
+                                    HYPRE_Int *cols_to_elim,
+                                    hypre_ParVector *X,
+                                    hypre_ParVector *B);
+  
 } // namespace mfem::internal
 
 } // namespace mfem

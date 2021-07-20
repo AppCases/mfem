@@ -87,6 +87,13 @@ protected:
    /// Set of boundary face Integrators to be applied.
    Array<BilinearFormIntegrator*> bfbfi;
    Array<Array<int>*>             bfbfi_marker; ///< Entries are not owned.
+   /* UW */
+   /// Set of HDG skeleton face Integrators over interior face to be applied.
+   Array<BilinearFormIntegrator*> hdgintbfi;
+
+   /* UW */
+   /// Set of HDG skeleton face Integrators over boundary face to be applied.
+   Array<BilinearFormIntegrator*> hdgbdrbfi;
 
    DenseMatrix elemmat;
    Array<int>  vdofs;
@@ -219,6 +226,14 @@ public:
        corresponding pointer (to Array<int>) will be NULL. */
    Array<Array<int>*> *GetBFBFI_Marker() { return &bfbfi_marker; }
 
+   /* UW */
+   // Array of the HDG type bilinear form integrators, right now there is only one
+   Array<BilinearFormIntegrator*> *GetHDGIntBFI() { return &hdgintbfi; }
+
+   /* UW */
+   // Array of the HDG type bilinear form integrators, right now there is only one
+   Array<BilinearFormIntegrator*> *GetHDGBdrBFI() { return &hdgbdrbfi; }
+  
    const double &operator()(int i, int j) { return (*mat)(i,j); }
 
    /// Returns reference to a_{ij}.
@@ -311,6 +326,14 @@ public:
    void AddBdrFaceIntegrator(BilinearFormIntegrator *bfi,
                              Array<int> &bdr_marker);
 
+   /* UW */
+   /// Adds new HDG Integrator.
+   void AddHDGInteriorFaceIntegrator(BilinearFormIntegrator *bfi);
+
+   /* UW */
+   /// Adds new HDG Integrator.
+   void AddHDGBoundaryFaceIntegrator(BilinearFormIntegrator *bfi);
+  
    void operator=(const double a)
    {
       if (mat != NULL) { *mat = a; }
@@ -600,6 +623,26 @@ protected:
    DenseMatrix elemmat;
    Array<int>  trial_vdofs, test_vdofs;
 
+   /* UW */
+   Array<BilinearFormIntegrator*> sktint; // trace face integrators
+   Array<BilinearFormIntegrator*> sktbdr; // trace face integrators
+
+   /* UW - GSJ */
+   // Mass free surface intgrator
+   Array<BilinearFormIntegrator*> mfsbfi;
+   Array<Array<int>*>             mfsbfi_marker;
+   // Mass free surface intgrator 2 (when M is the test space)
+   Array<BilinearFormIntegrator*> mfsbfi2;
+   Array<Array<int>*>             mfsbfi2_marker;
+   // Derivative integratos with W as trial, M as test
+   Array<BilinearFormIntegrator*> derfsbfi;
+   // Derivative integratos with M as trial, W as test
+   Array<BilinearFormIntegrator*> derfsbfi2;
+   
+   /* UW - SR */
+   Array<BilinearFormIntegrator*> hdgvpintbfi; // trace face integrators
+   Array<BilinearFormIntegrator*> hdgvpbdrbfi; // trace face integrators
+
 private:
    /// Copy construction is not supported; body is undefined.
    MixedBilinearForm(const MixedBilinearForm &);
@@ -677,6 +720,26 @@ public:
    void AddBdrTraceFaceIntegrator (BilinearFormIntegrator * bfi,
                                    Array<int> &bdr_marker);
 
+   /* UW - GSJ */
+   void AddFSMassIntegrator(BilinearFormIntegrator *bfi,
+                            Array<int> &bdr_marker);
+   void AddFSMassIntegrator2(BilinearFormIntegrator *bfi,
+                             Array<int> &bdr_marker);
+   void AddDerivativeFSIntegrator(BilinearFormIntegrator *bfi);
+   void AddDerivativeFSIntegrator2(BilinearFormIntegrator *bfi);
+   
+   /* UW - SR */
+   void AddHDGInteriorFaceIntegrator(BilinearFormIntegrator *bfi);
+   void AddHDGBoundaryFaceIntegrator(BilinearFormIntegrator *bfi);
+   Array<BilinearFormIntegrator*> *GetHDGvpIntBFI() { return &hdgvpintbfi; }
+   Array<BilinearFormIntegrator*> *GetHDGvpBdrBFI() { return &hdgvpbdrbfi; }
+  
+   /* UW */
+   void AddTraceBoundaryFaceIntegrator (BilinearFormIntegrator * bfi);
+   void AddTraceInteriorFaceIntegrator (BilinearFormIntegrator * bfi);
+   Array<BilinearFormIntegrator*> *GetTFIntBFI() { return &sktint; }
+   Array<BilinearFormIntegrator*> *GetTFBdrBFI() { return &sktbdr; }
+  
    /// Access all integrators added with AddDomainIntegrator().
    Array<BilinearFormIntegrator*> *GetDBFI() { return &dbfi; }
 

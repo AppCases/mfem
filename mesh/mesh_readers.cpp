@@ -25,7 +25,11 @@ using namespace std;
 namespace mfem
 {
 
-bool Mesh::remove_unused_vertices = true;
+/* UW - this actually should be an input, as ReadMFEMMesh may need it as true
+   for use parallel meshes and Stokes solutions as initial solution for NS Tamas 
+   needs it to be false*/
+bool Mesh::remove_unused_vertices = false;
+  //bool Mesh::remove_unused_vertices = true;
 
 void Mesh::ReadMFEMMesh(std::istream &input, bool mfem_v11, int &curved)
 {

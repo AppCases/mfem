@@ -89,6 +89,16 @@ public:
                                        ElementTransformation &Trans,
                                        DenseMatrix &elmat);
 
+   /* UW */
+   /* For the optimized HDG/EDG calculations  */
+   virtual void AssembleElementMatrixArray(const FiniteElement &fe_q,
+                                           const FiniteElement &fe_u,
+                                           ElementTransformation &Trans,
+                                           DenseMatrix &elmat1,
+                                           DenseMatrix &elmat2,
+                                           DenseMatrix &elmat3,
+                                           DenseMatrix &elmat4);
+  
    virtual void AssembleFaceMatrix(const FiniteElement &el1,
                                    const FiniteElement &el2,
                                    FaceElementTransformations &Trans,
@@ -118,6 +128,300 @@ public:
                                  const Vector &elfun, DenseMatrix &elmat)
    { AssembleFaceMatrix(el1, el2, Tr, elmat); }
 
+   /* UW - For the case when there are 2 finite element spaces - such as LDH or Stokes, Oseen, Navier-Stokes */
+   virtual void AssembleElementMatrix2FES(const FiniteElement &fe_q,
+                                          const FiniteElement &fe_u,
+                                          ElementTransformation &Trans,
+                                          DenseMatrix &elmat1);
+
+   /* UW - GSJ */
+   virtual void AssembleElementFaceMatrixFS2(const FiniteElement &trial_fe,
+                                             const FiniteElement &test_fe,
+                                             FaceElementTransformations &TrFace,
+                                             ElementTransformation &TrElem,
+                                             DenseMatrix &elmat);
+   virtual void AssembleElementFaceMatrixFS3(const FiniteElement &trial_fe,
+		   	   	   	   	   	   	   	   	     const FiniteElement &test_fe,
+										     FaceElementTransformations &TrFace_top,
+										     FaceElementTransformations &TrFace,
+										     DenseMatrix &elmat);
+   virtual void AssembleElementMatrixFS2(const FiniteElement &trial_fe,
+                                         const FiniteElement &test_fe,
+                                         ElementTransformation &TrElem_tr,
+                                         ElementTransformation &TrElem_te,
+                                         DenseMatrix &elmat);
+   /* UW - GSJ ends */
+
+   /* UW */
+   virtual void AssembleFaceMatrixElem12(const FiniteElement &el1,
+                                         const FiniteElement &el2,
+                                         FaceElementTransformations &Trans,
+                                         const int elem1or2,
+                                         DenseMatrix &elmat);
+
+   /* UW for HDG integrals with h_K and h_F */ 
+   virtual void AssembleFaceMatrix22(const FiniteElement &el1,
+                                    const FiniteElement &el2,
+                                    FaceElementTransformations &Trans,
+                                    const int elem_1or2,
+                                    const double h_K,
+                                    const double h_F,
+                                    DenseMatrix &elmat);
+   /* UW */
+   virtual void AssembleFaceMatrixOneElement(const FiniteElement &el1,
+                                             const FiniteElement &el2,
+                                             FaceElementTransformations &Trans,
+                                             const int elem_1or2,
+                                             DenseMatrix &elmat);
+   /* UW */
+   virtual void AssembleFaceMatrixOneElement2(const FiniteElement &el1,
+                                              const FiniteElement &el2,
+                                              FaceElementTransformations &Trans,
+                                              const int elem_1or2,
+                                              const double h_K,
+                                              const double h_F,
+                                              DenseMatrix &elmat);
+
+   /* UW */
+   /* For the optimized HDG/EDG calculations  */
+   virtual void AssembleFaceMatrixOneElementArray(const FiniteElement &fe_qL,
+                                                  const FiniteElement &fe_qR,
+                                                  const FiniteElement &fe_uL,
+                                                  const FiniteElement &fe_uR,
+                                                  const FiniteElement &face_fe,
+                                                  FaceElementTransformations &Trans,
+                                                  const int elem1or2,
+                                                  const bool onlyB,
+                                                  DenseMatrix &elmat1,
+                                                  DenseMatrix &elmat2,
+                                                  DenseMatrix &elmat3,
+                                                  DenseMatrix &elmat4,
+                                                  DenseMatrix &elmat5,
+                                                  DenseMatrix &elmat6);
+
+   /* UW */
+   /* For the optimized HDG/EDG calculations  */
+   /* 1 element base 1 face based FES */
+   virtual void AssembleFaceMatrixOneElement1and1FES(const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+  /* UW - SR */
+   virtual void AssembleFaceMatrixOneElement1and1FESb(const FiniteElement &fe_uL,
+						      const FiniteElement &fe_uR,
+						      const FiniteElement &face_fe,
+						      FaceElementTransformations &Trans,
+						      const int elem1or2,
+						      const bool onlyB,
+						      DenseMatrix &elmat1,
+						      DenseMatrix &elmat2,
+						      DenseMatrix &elmat3,
+						      DenseMatrix &elmat4,
+						      DenseMatrix &elmat5);
+   /* 2 element base 1 face based FES */
+   virtual void AssembleFaceMatrixOneElement2and1FES(const FiniteElement &fe_qL,
+                                                     const FiniteElement &fe_qR,
+                                                     const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+  /* UW - SR */
+   virtual void AssembleFaceMatrixOneElement2and1FESb(const FiniteElement &fe_qL,
+						      const FiniteElement &fe_qR,
+						      const FiniteElement &fe_uL,
+						      const FiniteElement &fe_uR,
+						      const FiniteElement &face_fe,
+						      FaceElementTransformations &Trans,
+						      const int elem1or2,
+						      const bool onlyB,
+						      DenseMatrix &elmat1,
+						      DenseMatrix &elmat2,
+						      DenseMatrix &elmat3,
+						      DenseMatrix &elmat4,
+						      DenseMatrix &elmat5);  
+   /* UW - GSJ */
+   virtual void AssembleFaceMatrixOneElement2and1FES3(const FiniteElement &fe_qL,
+                                                     const FiniteElement &fe_qR,
+                                                     const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4,
+                                                     DenseMatrix &elmat5);
+   /* 2 element base 2 face based FES */
+   virtual void AssembleFaceMatrixOneElement2and2FES(const FiniteElement &fe_qL,
+                                                     const FiniteElement &fe_qR,
+                                                     const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe1,
+                                                     const FiniteElement &face_fe2,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+  /* UW - SR */
+   virtual void AssembleFaceMatrixOneElement2and2FESb(const FiniteElement &fe_qL,
+						      const FiniteElement &fe_qR,
+						      const FiniteElement &fe_uL,
+						      const FiniteElement &fe_uR,
+						      const FiniteElement &face_fe1,
+						      const FiniteElement &face_fe2,
+						      FaceElementTransformations &Trans,
+						      const int elem1or2,
+						      const bool onlyB,
+						      DenseMatrix &elmat1,
+						      DenseMatrix &elmat2,
+						      DenseMatrix &elmat3,
+						      DenseMatrix &elmat4,
+						      DenseMatrix &elmat5);  
+   /* 1 element base 1 face based FES - with h_K and h_F */
+   virtual void AssembleFaceMatrixOneElement1and1FES2(const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     const double h_K,
+                                                     const double h_F,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+   /* 2 element base 1 face based FES - with h_K and h_F */
+   virtual void AssembleFaceMatrixOneElement2and1FES2(const FiniteElement &fe_qL,
+                                                     const FiniteElement &fe_qR,
+                                                     const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     const double h_K,
+                                                     const double h_F,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+   /* 2 element base 2 face based FES - with h_K and h_F */
+   virtual void AssembleFaceMatrixOneElement2and2FES2(const FiniteElement &fe_qL,
+                                                     const FiniteElement &fe_qR,
+                                                     const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe1,
+                                                     const FiniteElement &face_fe2,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     const double h_K,
+                                                     const double h_F,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+
+   /* 2 element base 2 face based FES - with h_K and h_F */
+   /* For NS when using \ubar on the Neumann Boundary */
+   virtual void AssembleFaceMatrixOneElement2and2FES2(const FiniteElement &fe_qL,
+                                                     const FiniteElement &fe_qR,
+                                                     const FiniteElement &fe_uL,
+                                                     const FiniteElement &fe_uR,
+                                                     const FiniteElement &face_fe1,
+                                                     const FiniteElement &face_fe2,
+                                                     FaceElementTransformations &Trans,
+                                                     const int elem1or2,
+                                                     const bool onlyB,
+                                                     const double h_K,
+                                                     const double h_F,
+                                                     const int FaceIndex,
+                                                     DenseMatrix &elmat1,
+                                                     DenseMatrix &elmat2,
+                                                     DenseMatrix &elmat3,
+                                                     DenseMatrix &elmat4);
+
+   /* UW */
+   /* For the optimized HDG/EDG calculations  */
+   virtual void AssembleFaceMatrixOneElementArray2(const FiniteElement &fe_qL,
+                                                   const FiniteElement &fe_qR,
+                                                   const FiniteElement &fe_uL,
+                                                   const FiniteElement &fe_uR,
+                                                   const FiniteElement &face_fe,
+                                                   FaceElementTransformations &Trans,
+                                                   const int elem1or2,
+                                                   const bool onlyB,
+                                                   const double h_K,
+                                                   const double h_F,
+                                                   DenseMatrix &elmat1,
+                                                   DenseMatrix &elmat2,
+                                                   DenseMatrix &elmat3,
+                                                   DenseMatrix &elmat4,
+                                                   DenseMatrix &elmat5,
+                                                   DenseMatrix &elmat6);
+   /* UW */
+   virtual void AssembleFaceMatrixOneElement(const FiniteElement &trial_face_fe, 
+                                             const FiniteElement &test_fe1,
+                                             const FiniteElement &test_fe2, 
+                                             FaceElementTransformations &Trans,
+                                             const int elem_1or2,
+                                             DenseMatrix &elmat);
+
+   /* UW */
+   virtual void AssembleFaceMatrixOneElement2(const FiniteElement &trial_face_fe, 
+                                              const FiniteElement &test_fe1,
+                                              const FiniteElement &test_fe2, 
+                                              FaceElementTransformations &Trans,
+                                              const int elem_1or2,
+                                              const double h_K,
+                                              const double h_F,
+                                              DenseMatrix &elmat);
+   
+   /* UW */
+   // Assemle a local matrix over an edge, HDG skeleton integral
+   virtual void AssembleFaceMatrix(const FiniteElement &face_fe,
+                                   FaceElementTransformations &Trans,
+                                   DenseMatrix &elmat);
+   
+   /* UW */
+   virtual void AssembleFaceMatrix2(const FiniteElement &face_fe,
+                                    FaceElementTransformations &Trans,
+                                    const double h_K,
+                                    const double h_F,
+                                    DenseMatrix &elmat);
+
+   /* UW */
+   virtual void AssembleFaceMatrix22(const FiniteElement &face_fe,
+                                    FaceElementTransformations &Trans,
+                                    const int elem1or2,
+                                    const double h_K,
+                                    const double h_F,
+                                    DenseMatrix &elmat);
+
+   /* UW */
+   virtual void AssembleFaceMatrixElem12(const FiniteElement &face_fe,
+                                         FaceElementTransformations &Trans,
+                                         const int elem1or2,
+                                         DenseMatrix &elmat);
+
+  
    /** @brief Virtual method required for Zienkiewicz-Zhu type error estimators.
 
        The purpose of the method is to compute a local "flux" finite element
@@ -1870,6 +2174,58 @@ public:
 
    void SetupPA(const FiniteElementSpace &fes, const bool force = false);
 };
+
+
+/* UW */
+/** Class for local mass matrix assembling a(\lamda,\mu) := <\lambda, \mu> 
+    It is used for the boundary elimination for skeleton variables */
+class SkeletonMassIntegrator : public BilinearFormIntegrator
+{
+private:
+    Vector shape;
+    
+public:
+    SkeletonMassIntegrator(const IntegrationRule *ir = NULL)
+      : BilinearFormIntegrator(ir) { }
+
+    virtual void AssembleFaceMatrix(const FiniteElement &face_fe,
+                                    FaceElementTransformations &Trans,
+                                    DenseMatrix &elmat);
+};
+/** Class for local mass matrix assembling a(\lamda,\mu) := <\lambda, \mu> 
+    It is used for the boundary elimination for skeleton variables */
+class VectorSkeletonMassIntegrator : public BilinearFormIntegrator
+{
+private:
+    Vector shape;
+    DenseMatrix partelmat;
+    
+public:
+    VectorSkeletonMassIntegrator (const IntegrationRule *ir = NULL)
+      : BilinearFormIntegrator(ir) { }
+
+    virtual void AssembleFaceMatrix(const FiniteElement &face_fe,
+                                    FaceElementTransformations &Trans,
+                                    DenseMatrix &elmat);
+};
+
+/** Class for local mass matrix assembling a(\lamda,\mu) := <\lambda, \mu> 
+    It is used for the boundary elimination for skeleton variables */
+class VectorSkeletonMassIntegratorST : public BilinearFormIntegrator
+{
+private:
+    Vector shape;
+    DenseMatrix partelmat;
+    
+public:
+    VectorSkeletonMassIntegratorST (const IntegrationRule *ir = NULL)
+      : BilinearFormIntegrator(ir) { }
+
+    virtual void AssembleFaceMatrix(const FiniteElement &face_fe,
+                                    FaceElementTransformations &Trans,
+                                    DenseMatrix &elmat);
+};
+
 
 /** Class for local mass matrix assembling a(u,v) := (Q u, v) */
 class MassIntegrator: public BilinearFormIntegrator

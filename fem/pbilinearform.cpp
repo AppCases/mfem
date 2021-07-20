@@ -230,9 +230,40 @@ void ParBilinearForm::AssembleSharedFaces(int skip_zeros)
    }
 }
 
+/* UW */  
+void ParBilinearForm::AssembleSharedHDGFaces(int skip_zeros)
+{
+   ParMesh *pmesh = pfes->GetParMesh();
+   FaceElementTransformations *ftr;
+   const FiniteElement *face_fe;
+   Array<int> vdofs;
+   DenseMatrix elemmat;
+
+   int nfaces = pmesh->GetNSharedFaces();
+   for (int i = 0; i < nfaces; i++)
+   {
+      int FaceNo = pmesh->GetSharedFace(i);
+      ftr = pmesh->GetSharedFaceTransformations(i);
+      pfes->GetFaceVDofs(FaceNo, vdofs);
+      face_fe = pfes->GetFaceElement(FaceNo);
+      //face_fe = pfes->GetFaceNbrFaceFE(FaceNo);
+      if (ftr != NULL)
+      {
+         for (int k = 0; k < hdgintbfi.Size(); k++)
+         {
+            hdgintbfi[k]->AssembleFaceMatrix(*face_fe, *ftr, elemmat);
+            elemmat *= 0.5;
+            mat->AddSubMatrix(vdofs, vdofs, elemmat, skip_zeros);
+         }
+      }
+   }
+}
+
 void ParBilinearForm::Assemble(int skip_zeros)
 {
-   if (mat == NULL && fbfi.Size() > 0)
+   /* UW */
+   //if (mat == NULL && fbfi.Size() > 0)
+   if (mat == NULL && ((fbfi.Size() > 0) || (hdgintbfi.Size() > 0)))
    {
       pfes->ExchangeFaceNbrData();
       pAllocMat();
@@ -244,8 +275,34 @@ void ParBilinearForm::Assemble(int skip_zeros)
    {
       AssembleSharedFaces(skip_zeros);
    }
+
+   /* UW */
+   if (hdgintbfi.Size() > 0)
+   {
+     AssembleSharedHDGFaces(skip_zeros);
+   }
+   
 }
 
+/* UW */
+void ParBilinearForm::AssembleInverse (int skip_zeros)
+{
+   Assemble();
+  
+   // get inverse
+   DenseMatrix A_local;   
+   for (int i = 0; i < pfes -> GetNE(); i++)
+    {
+      pfes->GetElementVDofs(i, vdofs);
+      A_local.SetSize(vdofs.Size(), vdofs.Size());
+      mat->GetSubMatrix(vdofs, vdofs, A_local);
+      A_local.Invert(); // A_local now contains inverse of A_local
+      A_local.Neg();
+      // Overwrite A matrix with its inverse
+      mat->SetSubMatrix(vdofs, vdofs, A_local, skip_zeros); 
+    }  
+}
+  
 void ParBilinearForm
 ::ParallelEliminateEssentialBC(const Array<int> &bdr_attr_is_ess,
                                HypreParMatrix &A, const HypreParVector &X,
@@ -285,6 +342,83 @@ const
    X.Distribute(&x);
    mat->Mult(X, Y);
    pfes->Dof_TrueDof_Matrix()->MultTranspose(a, Y, 1.0, y);
+}
+
+/* UW */  
+void ParMixedBilinearForm::AssembleSharedHDGFaces(int skip_zeros)
+{
+   ParMesh *pmesh = test_pfes->GetParMesh();
+   FaceElementTransformations *ftr;
+//    const FiniteElement *face_fe;
+   Array<int> tr_vdofs, te_vdofs;
+   const FiniteElement *trial_face_fe, *test_face_fe, *test_fe1, *test_fe2;
+   DenseMatrix elemmat;
+
+   int nfaces = pmesh->GetNSharedFaces();
+
+   for (int i = 0; i < nfaces; i++)
+   {
+      int FaceNo = pmesh->GetSharedFace(i);
+      ftr = pmesh->GetSharedFaceTransformations(i);
+      if (ftr != NULL)
+      {      
+	trial_pfes->GetFaceVDofs(FaceNo, tr_vdofs);
+	trial_face_fe = trial_pfes->GetFaceElement(FaceNo);
+        if (sktint.Size() > 0)
+        {
+	  test_pfes->GetElementVDofs(ftr->Elem1No, te_vdofs);
+	  test_fe1 = test_pfes->GetFE(ftr->Elem1No);
+	  test_fe2 = test_pfes->GetFaceNbrFE(ftr->Elem2No);            
+	  for (int k = 0; k < sktint.Size(); k++)
+          {
+            sktint[k]->AssembleFaceMatrix(*trial_face_fe, *test_fe1, *test_fe2,
+                                        *ftr, elemmat);
+	    mat->AddSubMatrix(te_vdofs, tr_vdofs, elemmat, skip_zeros);
+          }
+	}
+
+	if (hdgvpintbfi.Size() > 0)
+        {
+	  test_pfes->GetFaceVDofs(FaceNo, te_vdofs);
+	  test_face_fe = test_pfes->GetFaceElement(FaceNo);
+	  for (int k = 0; k < hdgvpintbfi.Size(); k++)
+          {
+            hdgvpintbfi[k]->AssembleFaceMatrix(*trial_face_fe, *test_face_fe,
+					       *ftr, elemmat);
+	    elemmat *= 0.5;
+	    mat->AddSubMatrix(te_vdofs, tr_vdofs, elemmat, skip_zeros);
+          }
+	}	
+      }
+   }
+}
+
+/* UW */
+void ParMixedBilinearForm::Assemble(int skip_zeros)
+{
+   test_pfes->ExchangeFaceNbrData();
+
+   MixedBilinearForm::Assemble(skip_zeros);
+
+   if (sktint.Size() > 0 || hdgvpintbfi.Size() > 0)
+   {
+     AssembleSharedHDGFaces(skip_zeros);
+   }
+   
+}
+
+/* UW */
+void ParMixedBilinearForm
+::ParallelEliminateTrialDofs(const Array<int> &bdr_attr_is_ess,
+                             HypreParMatrix &A, const HypreParVector &X,
+                             HypreParVector &B) const
+{
+   Array<int> dof_list;
+
+   trial_pfes->GetEssentialTrueDofs(bdr_attr_is_ess, dof_list);
+
+   // do the parallel elimination
+   A.EliminateCols(dof_list, X, B);
 }
 
 void ParBilinearForm::FormLinearSystem(

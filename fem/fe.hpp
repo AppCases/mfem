@@ -219,6 +219,8 @@ public:
 };
 
 class ElementTransformation;
+/* UW */
+class FaceElementTransformations;
 class Coefficient;
 class VectorCoefficient;
 class MatrixCoefficient;
@@ -482,7 +484,17 @@ public:
                                   ElementTransformation &Trans,
                                   DenseMatrix &I) const;
 
+   /* UW */
    /** Given a coefficient and a transformation, compute its projection
+       (approximation) in the local finite dimensional skeleton space in terms
+       of the degrees of freedom. */
+   virtual void Project (Coefficient &coeff,
+                         FaceElementTransformations &Trans, Vector &dofs) const;
+   /* UW */
+   virtual void Project (VectorCoefficient &coeff,
+                         FaceElementTransformations &Trans, Vector &dofs) const;
+
+  /** Given a coefficient and a transformation, compute its projection
        (approximation) in the local finite dimensional space in terms
        of the degrees of freedom. */
    virtual void Project (Coefficient &coeff,
@@ -648,6 +660,13 @@ public:
                                   DenseMatrix &I) const
    { CheckScalarFE(fe).NodalLocalInterpolation(Trans, I, *this); }
 
+   /* UW */
+   virtual void Project (Coefficient &coeff, 
+                         FaceElementTransformations &Trans, Vector &dofs) const;
+   /* UW */
+   virtual void Project (VectorCoefficient &vc, 
+                         FaceElementTransformations &Trans, Vector &dofs) const;
+  
    virtual void Project (Coefficient &coeff,
                          ElementTransformation &Trans, Vector &dofs) const;
 
@@ -2397,6 +2416,27 @@ private:
 
 public:
    L2_WedgeElement(const int p,
+                   const int btype = BasisType::GaussLegendre);
+   virtual void CalcShape(const IntegrationPoint &ip, Vector &shape) const;
+   virtual void CalcDShape(const IntegrationPoint &ip,
+                           DenseMatrix &dshape) const;
+};
+
+// UW: space-time wedge with higher order in time than in space
+class L2_WedgeElementST : public NodalFiniteElement
+{
+private:
+#ifndef MFEM_THREAD_SAFE
+   mutable Vector t_shape, s_shape;
+   mutable DenseMatrix t_dshape, s_dshape;
+#endif
+   Array<int> t_dof, s_dof;
+
+   L2_TriangleElement TriangleFE;
+   L2_SegmentElement  SegmentFE;
+
+public:
+   L2_WedgeElementST(const int p,
                    const int btype = BasisType::GaussLegendre);
    virtual void CalcShape(const IntegrationPoint &ip, Vector &shape) const;
    virtual void CalcDShape(const IntegrationPoint &ip,

@@ -254,6 +254,13 @@ public:
    int GroupNTriangles(int group) { return group_stria.RowSize(group-1); }
    int GroupNQuadrilaterals(int group) { return group_squad.RowSize(group-1); }
 
+   /* UW */
+   int NTotalSharedVertices() { return svert_lvert.Size(); }
+   int NTotalSharedEdges()    { return shared_edges.Size(); }
+   int NTotalSharedFaces()    { return (shared_trias.Size() + shared_quads.Size()); }
+   int NTotalSharedTrias()    { return shared_trias.Size(); }
+   int NTotalSharedQuads()    { return shared_quads.Size(); }
+  
    int GroupVertex(int group, int i)
    { return svert_lvert[group_svert.GetRow(group-1)[i]]; }
    void GroupEdge(int group, int i, int &edge, int &o);

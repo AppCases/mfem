@@ -127,6 +127,20 @@ void FiniteElement::GetTransferMatrix(const FiniteElement &fe,
    MFEM_ABORT("method is not overloaded !");
 }
 
+/* UW */
+void FiniteElement::Project (
+   Coefficient &coeff, FaceElementTransformations &Trans, Vector &dofs) const
+{
+   mfem_error ("FiniteElement::Project (...) (skeleton) is not overloaded !");
+}
+
+/* UW */
+void FiniteElement::Project (
+   VectorCoefficient &coeff, FaceElementTransformations &Trans, Vector &dofs) const
+{
+   mfem_error ("FiniteElement::Project (...) (skeleton - VectorCoefficient) is not overloaded !");
+}
+  
 void FiniteElement::Project (
    Coefficient &coeff, ElementTransformation &Trans, Vector &dofs) const
 {
@@ -610,6 +624,51 @@ void NodalFiniteElement::GetLocalRestriction(ElementTransformation &Trans,
       }
    }
    R.Threshold(1e-12);
+}
+
+/* UW */
+void NodalFiniteElement::Project (
+   Coefficient &coeff, FaceElementTransformations &Trans, Vector &dofs) const
+{
+   for (int i = 0; i < Dof; i++)
+   {
+      const IntegrationPoint &ip = Nodes.IntPoint(i);
+      // some coefficients expect that Trans.IntPoint is the same
+      // as the second argument of Eval
+      Trans.Face->SetIntPoint(&ip);
+      dofs(i) = coeff.Eval (*Trans.Face, ip);
+      if (MapType == INTEGRAL)
+      {
+         dofs(i) *= Trans.Face->Weight();
+      }
+   }
+}
+
+/* UW */
+void NodalFiniteElement::Project (
+   VectorCoefficient &vc, FaceElementTransformations &Trans, Vector &dofs) const
+{
+    MFEM_ASSERT(vc.GetVDim() <= 3, "");
+
+    double v[3];
+    Vector x (v, vc.GetVDim());
+
+    for (int i = 0; i < Dof; i++)
+    {
+       const IntegrationPoint &ip = Nodes.IntPoint(i);
+       // some coefficients expect that Trans.IntPoint is the same
+       // as the second argument of Eval
+       Trans.Face->SetIntPoint(&ip);
+       vc.Eval (x, *Trans.Face, ip);
+       if (MapType == INTEGRAL)
+       {
+          dofs(i) *= Trans.Face->Weight();
+       }
+       for (int j = 0; j < x.Size(); j++)
+       {
+          dofs(Dof*j+i) = v[j];
+       }
+    }
 }
 
 void NodalFiniteElement::Project (
@@ -10191,6 +10250,98 @@ void L2_WedgeElement::CalcDShape(const IntegrationPoint &ip,
       dshape(i, 2) = t_shape[t_dof[i]] * s_dshape(s_dof[i],0);
    }
 }
+
+
+// UW: space-time wedge
+L2_WedgeElementST::L2_WedgeElementST(const int p, const int btype)
+   : NodalFiniteElement(3, Geometry::PRISM, ((p + 2)*(p + 1)*(p + 2))/2,
+                        p, FunctionSpace::Qk),
+     TriangleFE(p, btype),
+     SegmentFE(p+1, btype)
+{
+#ifndef MFEM_THREAD_SAFE
+   t_shape.SetSize(TriangleFE.GetDof());
+   s_shape.SetSize(SegmentFE.GetDof());
+   t_dshape.SetSize(TriangleFE.GetDof(), 2);
+   s_dshape.SetSize(SegmentFE.GetDof(), 1);
+#endif
+
+   t_dof.SetSize(Dof);
+   s_dof.SetSize(Dof);
+
+   // Interior DoFs
+   int m=0;
+   for (int k=0; k<=p+1; k++)
+   {
+      int l=0;
+      for (int j=0; j<=p; j++)
+      {
+         for (int i=0; i<=j; i++)
+         {
+            t_dof[m] = l;
+            s_dof[m] = k;
+            l++; m++;
+         }
+      }
+   }
+
+   // Define Nodes
+   const IntegrationRule & t_Nodes = TriangleFE.GetNodes();
+   const IntegrationRule & s_Nodes = SegmentFE.GetNodes();
+   for (int i=0; i<Dof; i++)
+   {
+      Nodes.IntPoint(i).x = t_Nodes.IntPoint(t_dof[i]).x;
+      Nodes.IntPoint(i).y = t_Nodes.IntPoint(t_dof[i]).y;
+      Nodes.IntPoint(i).z = s_Nodes.IntPoint(s_dof[i]).x;
+   }
+}
+
+void L2_WedgeElementST::CalcShape(const IntegrationPoint &ip,
+                                Vector &shape) const
+{
+#ifdef MFEM_THREAD_SAFE
+   Vector t_shape(TriangleFE.GetDof());
+   Vector s_shape(SegmentFE.GetDof());
+#endif
+
+   IntegrationPoint ipz; ipz.x = ip.z; ipz.y = 0.0; ipz.z = 0.0;
+
+   TriangleFE.CalcShape(ip, t_shape);
+   SegmentFE.CalcShape(ipz, s_shape);
+
+   for (int i=0; i<Dof; i++)
+   {
+      shape[i] = t_shape[t_dof[i]] * s_shape[s_dof[i]];
+   }
+}
+
+void L2_WedgeElementST::CalcDShape(const IntegrationPoint &ip,
+                                 DenseMatrix &dshape) const
+{
+#ifdef MFEM_THREAD_SAFE
+   Vector      t_shape(TriangleFE.GetDof());
+   DenseMatrix t_dshape(TriangleFE.GetDof(), 2);
+   Vector      s_shape(SegmentFE.GetDof());
+   DenseMatrix s_dshape(SegmentFE.GetDof(), 1);
+#endif
+
+   IntegrationPoint ipz; ipz.x = ip.z; ipz.y = 0.0; ipz.z = 0.0;
+
+   TriangleFE.CalcShape(ip, t_shape);
+   TriangleFE.CalcDShape(ip, t_dshape);
+   SegmentFE.CalcShape(ipz, s_shape);
+   SegmentFE.CalcDShape(ipz, s_dshape);
+
+   for (int i=0; i<Dof; i++)
+   {
+      dshape(i, 0) = t_dshape(t_dof[i],0) * s_shape[s_dof[i]];
+      dshape(i, 1) = t_dshape(t_dof[i],1) * s_shape[s_dof[i]];
+      dshape(i, 2) = t_shape[t_dof[i]] * s_dshape(s_dof[i],0);
+   }
+}
+// end UW
+
+
 
 
 L2Pos_WedgeElement::L2Pos_WedgeElement(const int p)

@@ -184,6 +184,49 @@ public:
    virtual ~L2_FECollection();
 };
 
+/// UW: space-time prism with different orders
+class L2_FECollectionST : public FiniteElementCollection
+{
+private:
+   int b_type; // BasisType
+   char d_name[32];
+   ScalarFiniteElement *L2_Elements[Geometry::NumGeom];
+   ScalarFiniteElement *Tr_Elements[Geometry::NumGeom];
+   int *SegDofOrd[2]; // for rotating segment dofs in 1D
+   int *TriDofOrd[6]; // for rotating triangle dofs in 2D
+   int *OtherDofOrd;  // for rotating other types of elements (for Or == 0)
+
+public:
+   L2_FECollectionST(const int p, const int dim,
+                   const int btype = BasisType::GaussLegendre,
+                   const int map_type = FiniteElement::VALUE);
+
+   virtual const FiniteElement *FiniteElementForGeometry(
+      Geometry::Type GeomType) const
+   { return L2_Elements[GeomType]; }
+   virtual int DofForGeometry(Geometry::Type GeomType) const
+   {
+      if (L2_Elements[GeomType])
+      {
+         return L2_Elements[GeomType]->GetDof();
+      }
+      return 0;
+   }
+   virtual const int *DofOrderForOrientation(Geometry::Type GeomType,
+                                             int Or) const;
+   virtual const char *Name() const { return d_name; }
+
+   virtual const FiniteElement *TraceFiniteElementForGeometry(
+      Geometry::Type GeomType) const
+   {
+      return Tr_Elements[GeomType];
+   }
+
+   int GetBasisType() const { return b_type; }
+
+   virtual ~L2_FECollectionST();
+};
+  
 /// Declare an alternative name for L2_FECollection = DG_FECollection
 typedef L2_FECollection DG_FECollection;
 

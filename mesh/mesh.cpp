@@ -103,8 +103,11 @@ double Mesh::GetElementSize(int i, const Vector &dir)
 double Mesh::GetElementVolume(int i)
 {
    ElementTransformation *et = GetElementTransformation(i);
+   /* UW increase the order */
    const IntegrationRule &ir = IntRules.Get(GetElementBaseGeometry(i),
-                                            et->OrderJ());
+                                            2*et->OrderJ());
+   //const IntegrationRule &ir = IntRules.Get(GetElementBaseGeometry(i),
+   //                                         et->OrderJ());
    double volume = 0.0;
    for (int j = 0; j < ir.GetNPoints(); j++)
    {
@@ -116,6 +119,29 @@ double Mesh::GetElementVolume(int i)
    return volume;
 }
 
+/* UW */
+double Mesh::GetFaceVolume(int i)
+{
+   FaceElementTransformations *et = GetFaceElementTransformations(i);
+   int orderJ;
+   if (et->Elem2No<0)
+       orderJ = et->Elem1->OrderJ();
+   else
+       orderJ = max(et->Elem1->OrderJ(),et->Elem2->OrderJ());
+
+   const IntegrationRule &ir = IntRules.Get(GetFaceBaseGeometry(i),
+                                            2*orderJ);
+   double volume = 0.0;
+   for (int j = 0; j < ir.GetNPoints(); j++)
+   {
+      const IntegrationPoint &ip = ir.IntPoint(j);
+      et->Face->SetIntPoint(&ip);
+      volume += ip.weight * et->Face->Weight();
+   }
+
+   return volume;
+}
+  
 // Similar to VisualizationSceneSolution3d::FindNewBox in GLVis
 void Mesh::GetBoundingBox(Vector &min, Vector &max, int ref)
 {
@@ -970,6 +996,75 @@ FaceElementTransformations *Mesh::GetBdrFaceTransformations(int BdrElemNo)
    tr->Face->Attribute = boundary[BdrElemNo]->GetAttribute();
    return tr;
 }
+
+/* UW */
+void Mesh::GetBdrFaceToEdge(int BdrElemNo, int *fn)
+{
+   if (Dim == 3)
+   {
+      *fn = be_to_face[BdrElemNo];
+   }
+   else if (Dim == 2)
+   {
+      *fn = be_to_edge[BdrElemNo];
+   }
+   else
+   {
+      *fn = boundary[BdrElemNo]->GetVertices()[0];
+   }
+}
+
+/* UW */
+void Mesh::GetEdgeToBdrFace(Array<int> &Edge_to_Be)
+{
+   int no_faces; 
+    
+   if (Dim == 3)
+   {
+      no_faces = NumOfFaces;
+   }
+   else if (Dim == 2)
+   {
+      no_faces = NumOfEdges;
+   }
+   else
+   {
+      no_faces = NumOfEdges;
+   }
+   
+   Edge_to_Be.SetSize(no_faces);
+   Edge_to_Be = -1;
+   
+   for(int i = 0; i < NumOfBdrElements; i++)
+   {
+       if (Dim == 2)
+            Edge_to_Be[be_to_edge[i]] = i;
+       else if (Dim == 3)
+           Edge_to_Be[be_to_face[i]] = i;
+   }
+   
+}
+
+/* UW */
+Table* Mesh::GetElementEdges()
+{
+   Table *out; 
+   if (Dim == 2)
+   {
+      NumOfEdges = GetElementToEdgeTable(*el_to_edge, be_to_edge);
+      out = el_to_edge;
+   }
+   else if (Dim == 3)
+   {
+      out = el_to_face;
+   }
+   else
+   {
+       mfem_error(" GetElementEdges defined only for 2D and 3D ");
+   }
+   return out;
+}
+
 
 void Mesh::GetFaceElements(int Face, int *Elem1, int *Elem2) const
 {

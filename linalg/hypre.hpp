@@ -116,6 +116,8 @@ public:
    /// MPI communicator
    MPI_Comm GetComm() { return x->comm; }
 
+   void WrapHypreParVector(hypre_ParVector *y);
+
    /// Returns the parallel row/column partitioning
    /** See @ref hypre_partitioning_descr "here" for a description of the
        partitioning array. */
@@ -233,6 +235,16 @@ private:
 public:
    /// An empty matrix to be used as a reference to an existing matrix
    HypreParMatrix();
+
+   /// Converts hypre's format to HypreParMatrix
+   /** If @a owner is false, ownership of @a a is not transferred */
+   void WrapHypreParCSRMatrix(hypre_ParCSRMatrix *a, bool owner = true)
+   {
+      A = a;
+      if (!owner) { ParCSROwner = 0; }
+      height = GetNumRows();
+      width = GetNumCols();
+   }
 
    /// Converts hypre's format to HypreParMatrix
    /** If @a owner is false, ownership of @a a is not transferred */
@@ -403,6 +415,13 @@ public:
    /// Returns the transpose of *this
    HypreParMatrix * Transpose() const;
 
+   /** Returns principle submatrix given by array of indices of connections
+       with relative size > \@ threshold in *this. */
+#if MFEM_HYPRE_VERSION >= 21800
+   HypreParMatrix * ExtractSubmatrix(Array<int> &indices,
+                                     double threshhold=0.0) const;
+#endif
+
    /// Returns the number of rows in the diagonal block of the ParCSRMatrix
    int GetNumRows() const
    {
@@ -530,6 +549,12 @@ public:
        original matrix. */
    HypreParMatrix* EliminateCols(const Array<int> &cols);
 
+   /* UW */
+   /** Eliminate columns from the matrix, and rows from the vector B.
+       Modify B with the BC values in X. */
+   void EliminateCols(const Array<int> &rows_cols, const HypreParVector &X,
+                      HypreParVector &B);
+
    /// Eliminate rows from the diagonal and off-diagonal blocks of the matrix.
    void EliminateRows(const Array<int> &rows);
 
@@ -548,6 +573,23 @@ public:
 
    Type GetType() const { return Hypre_ParCSR; }
 };
+
+#if MFEM_HYPRE_VERSION >= 21800
+
+enum class BlockInverseScaleJob
+{
+   MATRIX_ONLY,
+   RHS_ONLY,
+   MATRIX_AND_RHS
+};
+
+/** Constructs and applies block diagonal inverse of HypreParMatrix.
+    The enum @a job specifies whether the matrix or the RHS should be
+    scaled (or both). */
+void BlockInverseScale(const HypreParMatrix *A, HypreParMatrix *C,
+                       const Vector *b, HypreParVector *d,
+                       int blocksize, BlockInverseScaleJob job);
+#endif
 
 /** @brief Return a new matrix `C = alpha*A + beta*B`, assuming that both `A`
     and `B` use the same row and column partitions and the same `col_map_offd`
@@ -818,6 +860,14 @@ public:
    void SetLogging(int logging);
    void SetPrintLevel(int print_lvl);
 
+   /* UW */
+   void GetNumIterations(int &num_iterations)
+   {
+      HYPRE_Int num_it;
+      HYPRE_ParCSRGMRESGetNumIterations(gmres_solver, &num_it);
+      num_iterations = internal::to_int(num_it);
+   }
+
    /// Set the hypre solver to be used as a preconditioner
    void SetPreconditioner(HypreSolver &precond);
 
@@ -989,8 +1039,93 @@ public:
        As with SetSystemsOptions(), this solver assumes Ordering::byVDIM. */
    void SetElasticityOptions(ParFiniteElementSpace *fespace);
 
+#if MFEM_HYPRE_VERSION >= 21800
+   /** Hypre parameters to use AIR AMG solve for advection-dominated problems.
+       See "Nonsymmetric Algebraic Multigrid Based on Local Approximate Ideal
+       Restriction (AIR)," Manteuffel, Ruge, Southworth, SISC (2018),
+       DOI:/10.1137/17M1144350. Options: "distanceR" -> distance of neighbor
+       DOFs to buld restriction operator; options include 1, 2, and 15 (1.5).
+       Strings "prerelax" and "postrelax" indicate points to relax on:
+       F = F-points, C = C-points, A = all points. E.g., FFC -> relax on
+       F-points, relax again on F-points, then relax on C-points. */
+   void SetAdvectiveOptions(int distance=15,  const std::string &prerelax="",
+                            const std::string &postrelax="FFC");
+
+   /// Expert option - consult hypre documentation/team
+   void SetStrongThresholdR(double strengthR)
+   { HYPRE_BoomerAMGSetStrongThresholdR(amg_precond, strengthR); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetFilterThresholdR(double filterR)
+   { HYPRE_BoomerAMGSetFilterThresholdR(amg_precond, filterR); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetRestriction(int restrict_type)
+   { HYPRE_BoomerAMGSetRestriction(amg_precond, restrict_type); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetIsTriangular()
+   { HYPRE_BoomerAMGSetIsTriangular(amg_precond, 1); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetGMRESSwitchR(int gmres_switch)
+   { HYPRE_BoomerAMGSetGMRESSwitchR(amg_precond, gmres_switch); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetCycleNumSweeps(int prerelax, int postrelax)
+   {
+      HYPRE_BoomerAMGSetCycleNumSweeps(amg_precond, prerelax,  1);
+      HYPRE_BoomerAMGSetCycleNumSweeps(amg_precond, postrelax, 2);
+   }
+#endif
+
    void SetPrintLevel(int print_level)
    { HYPRE_BoomerAMGSetPrintLevel(amg_precond, print_level); }
+
+   void SetMaxIter(int max_iter)
+   { HYPRE_BoomerAMGSetMaxIter(amg_precond, max_iter); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetMaxLevels(int max_levels)
+   { HYPRE_BoomerAMGSetMaxLevels(amg_precond, max_levels); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetTol(double tol)
+   { HYPRE_BoomerAMGSetTol(amg_precond, tol); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetStrengthThresh(double strength)
+   { HYPRE_BoomerAMGSetStrongThreshold(amg_precond, strength); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetInterpolation(int interp_type)
+   { HYPRE_BoomerAMGSetInterpType(amg_precond, interp_type); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetCoarsening(int coarsen_type)
+   { HYPRE_BoomerAMGSetCoarsenType(amg_precond, coarsen_type); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetRelaxType(int relax_type)
+   { HYPRE_BoomerAMGSetRelaxType(amg_precond, relax_type); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetCycleType(int cycle_type)
+   { HYPRE_BoomerAMGSetCycleType(amg_precond, cycle_type); }
+
+   void GetNumIterations(int &num_it)
+   { HYPRE_BoomerAMGGetNumIterations(amg_precond, &num_it); }
+
+   /// Expert option - consult hypre documentation/team
+   void SetNodal(int blocksize)
+   {
+      HYPRE_BoomerAMGSetNumFunctions(amg_precond, blocksize);
+      HYPRE_BoomerAMGSetNodal(amg_precond, 1);
+   }
+
+   /// Expert option - consult hypre documentation/team
+   void SetAggressiveCoarsening(int num_levels)
+   { HYPRE_BoomerAMGSetAggNumLevels(amg_precond, num_levels); }
 
    /// The typecast to HYPRE_Solver returns the internal amg_precond
    virtual operator HYPRE_Solver() const { return amg_precond; }

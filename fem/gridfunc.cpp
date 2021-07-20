@@ -405,6 +405,38 @@ const
    return (DofVal * LocVec);
 }
 
+/* UW - GSJ to evaluate facet variables on boundary face */ 
+double GridFunction::GetValueBdrHDG(int i, const IntegrationPoint &ip, int vdim)
+const
+{
+   Array<int> dofs;
+   fes->GetBdrElementDofs(i, dofs);
+   fes->DofsToVDofs(vdim-1, dofs);
+   Vector DofVal(dofs.Size()), LocVec;
+   const FiniteElement *fe = fes->GetBE(i);
+   MFEM_ASSERT(fe->GetMapType() == FiniteElement::VALUE, "invalid FE map type");
+   fe->CalcShape(ip, DofVal);
+   GetSubVector(dofs, LocVec);
+
+   return (DofVal * LocVec);
+}
+
+/* UW - to evaluate facet variables */
+double GridFunction::GetValueFacet(int i, const IntegrationPoint &ip, int vdim)
+const
+{
+   Array<int> dofs;
+   fes->GetFaceDofs(i, dofs);
+   fes->DofsToVDofs(vdim-1, dofs);
+   Vector DofVal(dofs.Size()), LocVec;
+   const FiniteElement *fe = fes->GetFaceElement(i);
+   MFEM_ASSERT(fe->GetMapType() == FiniteElement::VALUE, "invalid FE map type");
+   fe->CalcShape(ip, DofVal);
+   GetSubVector(dofs, LocVec);
+
+   return (DofVal * LocVec);
+}
+
 void GridFunction::GetVectorValue(int i, const IntegrationPoint &ip,
                                   Vector &val) const
 {
@@ -1025,6 +1057,52 @@ double GridFunction::GetDivergence(ElementTransformation &tr) const
          for (int j = 0; j < Jinv.Height(); j++)
          {
             div_v += grad_hat(i, j) * Jinv(j, i);
+         }
+      }
+   }
+   else
+   {
+      // Assuming RT-type space
+      Array<int> dofs;
+      fes->GetElementDofs(elNo, dofs);
+      Vector loc_data, divshape(FElem->GetDof());
+      GetSubVector(dofs, loc_data);
+      FElem->CalcDivShape(tr.GetIntPoint(), divshape);
+      div_v = (loc_data * divshape) / tr.Weight();
+   }
+   return div_v;
+}
+
+/* UW */
+double GridFunction::GetDivergenceST(ElementTransformation &tr)
+{
+   double div_v;
+   int elNo = tr.ElementNo;
+   const FiniteElement *FElem = fes->GetFE(elNo);
+   if (FElem->GetRangeType() == FiniteElement::SCALAR)
+   {
+      MFEM_ASSERT(FElem->GetMapType() == FiniteElement::VALUE,
+                  "invalid FE map type");
+      DenseMatrix grad_hat;
+      GetVectorGradientHat(tr, grad_hat);
+      // convert to a space-time matrix, with a zero first row
+      int ST_dim = tr.GetDimension();
+      DenseMatrix grad_hatST;
+      grad_hatST.SetSize(ST_dim, ST_dim);
+      grad_hatST = 0.0;
+      for (int i = 0; i < ST_dim-1; i++)
+         for (int j = 0; j < ST_dim; j++)
+            grad_hatST(i+1,j) = grad_hat(i,j);
+
+      const DenseMatrix &J = tr.Jacobian();
+      DenseMatrix Jinv(J.Width(), J.Height());
+      CalcInverse(J, Jinv);
+      div_v = 0.0;
+      for (int i = 0; i < Jinv.Width(); i++)
+      {
+         for (int j = 0; j < Jinv.Height(); j++)
+         {
+            div_v += grad_hatST(i, j) * Jinv(j, i);
          }
       }
    }
@@ -1682,6 +1760,152 @@ void GridFunction::ProjectDeltaCoefficient(DeltaCoefficient &delta_coeff,
    }
 }
 
+/* UW */
+void GridFunction::ProjectCoefficientSkeletonDG(Coefficient &coeff)
+{
+   Array<int> vdofs;
+   Vector vals, local_rhs, shape;
+   DenseMatrix local_mtx;
+   Mesh *mesh = fes->GetMesh();
+   int nfaces = mesh->GetNumFaces();
+   FaceElementTransformations *ftr;
+   SkeletonMassIntegrator Mi;
+   SkeletonMassIntegratorRHS MiRHS(coeff);
+
+   for (int i = 0; i < nfaces; i++)
+   {
+      ftr = mesh->GetFaceElementTransformations(i);
+      Mi.AssembleFaceMatrix(*fes->GetFaceElement(i),
+                              *ftr, local_mtx); 
+      MiRHS.AssembleRHSElementVect(*fes->GetFaceElement(i),
+                                    *ftr, local_rhs);
+      fes->GetFaceVDofs(i, vdofs);
+      vals.SetSize(vdofs.Size());
+         
+      local_mtx.Invert();
+      local_mtx.Mult(local_rhs, vals);
+      SetSubVector(vdofs, vals);
+   }
+}
+
+/* UW */
+void GridFunction::ProjectCoefficientSkeletonDGVector(VectorCoefficient &vcoeff)
+{
+   Array<int> vdofs;
+   Vector vals, local_rhs, shape;
+   DenseMatrix local_mtx;
+   Mesh *mesh = fes->GetMesh();
+   int nfaces = mesh->GetNumFaces();
+   FaceElementTransformations *ftr;
+   VectorSkeletonMassIntegrator Mi;
+   VectorSkeletonMassIntegratorRHS MiRHS(vcoeff);
+
+   for (int i = 0; i < nfaces; i++)
+   {
+      ftr = mesh->GetFaceElementTransformations(i);
+      Mi.AssembleFaceMatrix(*fes->GetFaceElement(i),
+                              *ftr, local_mtx); 
+      MiRHS.AssembleRHSElementVect(*fes->GetFaceElement(i),
+                                    *ftr, local_rhs);
+      fes->GetFaceVDofs(i, vdofs);
+      vals.SetSize(vdofs.Size());
+         
+      local_mtx.Invert();
+      local_mtx.Mult(local_rhs, vals);
+      SetSubVector(vdofs, vals);
+   }
+}
+
+/* UW */
+void GridFunction::ProjectCoefficientSkeletonDGVectorST(VectorCoefficient &vcoeff)
+{
+   Array<int> vdofs;
+   Vector vals, local_rhs, shape;
+   DenseMatrix local_mtx;
+   Mesh *mesh = fes->GetMesh();
+   int nfaces = mesh->GetNumFaces();
+   FaceElementTransformations *ftr;
+   VectorSkeletonMassIntegratorST Mi;
+   VectorSkeletonMassIntegratorRHSST MiRHS(vcoeff);
+
+   for (int i = 0; i < nfaces; i++)
+   {
+      ftr = mesh->GetFaceElementTransformations(i);
+      Mi.AssembleFaceMatrix(*fes->GetFaceElement(i),
+                              *ftr, local_mtx); 
+      MiRHS.AssembleRHSElementVect(*fes->GetFaceElement(i),
+                                    *ftr, local_rhs);
+      fes->GetFaceVDofs(i, vdofs);
+      vals.SetSize(vdofs.Size());
+         
+      local_mtx.Invert();
+      local_mtx.Mult(local_rhs, vals);
+      SetSubVector(vdofs, vals);
+   }
+}
+
+/* UW */
+void GridFunction::ProjectCoefficientSkeleton(Coefficient &coeff)
+{
+   DeltaCoefficient *delta_c = dynamic_cast<DeltaCoefficient *>(&coeff);
+
+   if (delta_c == NULL)
+   {
+      Mesh *mesh = fes->GetMesh();
+      int nfaces = mesh->GetNumFaces();
+      Array<int> vdofs;
+      Vector vals;
+
+      for (int i = 0; i < nfaces; i++)
+      {
+         fes->GetFaceVDofs(i, vdofs);
+         vals.SetSize(vdofs.Size());
+         fes->GetFaceElement(i)->Project(coeff, *mesh->GetFaceElementTransformations(i), vals);
+         SetSubVector(vdofs, vals);
+      }
+   }
+   else
+   {
+      double integral;
+
+      ProjectDeltaCoefficient(*delta_c, integral);
+
+      (*this) *= (delta_c->Scale() / integral);
+   }
+}
+
+/* UW */
+void GridFunction::ProjectCoefficientSkeletonVector(VectorCoefficient &vcoeff)
+{
+   Mesh *mesh = fes->GetMesh();
+   int nfaces = mesh->GetNumFaces();
+   Array<int> vdofs;
+   Vector vals;
+
+   for (int i = 0; i < nfaces; i++)
+   {
+      fes->GetFaceVDofs(i, vdofs);
+      vals.SetSize(vdofs.Size());
+      fes->GetFaceElement(i)->Project(vcoeff, *mesh->GetFaceElementTransformations(i), vals);
+      SetSubVector(vdofs, vals);
+   }
+}
+
+/* UW */
+void GridFunction::ComputeBoundaryElementIndex()
+{
+   Mesh *mesh = fes->GetMesh();
+   int meshNE = mesh->GetNE();
+   
+   BoundaryElementIndex.SetSize(6*meshNE+1);
+   BoundaryElementIndex = -1;
+
+   for (int i = 0; i < meshNE; i++)
+   {
+      BoundaryElementIndex[mesh->GetAttribute(i)] = i;
+   }
+}
+
 void GridFunction::ProjectCoefficient(Coefficient &coeff)
 {
    DeltaCoefficient *delta_c = dynamic_cast<DeltaCoefficient *>(&coeff);
@@ -2243,6 +2467,152 @@ double GridFunction::ComputeH1Error(
    return sqrt(error);
 }
 
+/* UW */
+double GridFunction::ComputeDivError(const IntegrationRule *irs[])
+{
+   int intorder;
+   Mesh *mesh;
+   const FiniteElement *fe;
+   ElementTransformation *transf;
+   double error = 0.0;
+
+   mesh = fes->GetMesh();
+
+   for (int i = 0; i < mesh->GetNE(); i++)
+   {
+      transf = mesh->GetElementTransformation(i);
+      fe = fes->GetFE(i);
+      intorder = 2*fe->GetOrder() + 1; // <----------
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         transf->SetIntPoint(&ip);
+         const double divu = (*this).GetDivergence(*transf);
+         error += ip.weight * transf->Weight() * divu * divu;
+      }
+   }
+
+   return sqrt(abs(error));
+}
+
+/* UW */
+double GridFunction::ComputeDivErrorST(const IntegrationRule *irs[])
+{
+   int intorder;
+   Mesh *mesh;
+   const FiniteElement *fe;
+   ElementTransformation *transf;
+   double error = 0.0;
+
+   mesh = fes->GetMesh();
+
+   for (int i = 0; i < mesh->GetNE(); i++)
+   {
+      transf = mesh->GetElementTransformation(i);
+      fe = fes->GetFE(i);
+      intorder = 2*fe->GetOrder() + 1; // <----------
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         transf->SetIntPoint(&ip);
+         const double divu = (*this).GetDivergenceST(*transf);
+         error += ip.weight * transf->Weight() * divu * divu;
+      }
+   }
+
+   return sqrt(abs(error));
+}
+
+/* UW */
+double GridFunction::ComputeMean(const IntegrationRule *irs[]) const
+{
+   double global_mean = 0.0;
+   double element_mean;
+   const FiniteElement *fe;
+   ElementTransformation *T;
+   Vector vals;
+
+   for (int i = 0; i < fes->GetNE(); i++)
+   {
+      fe = fes->GetFE(i);
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         int intorder = 2*fe->GetOrder() + 1; // <----------
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      GetValues(i, *ir, vals);
+      T = fes->GetElementTransformation(i);
+      element_mean = 0.0;
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         T->SetIntPoint(&ip);
+         element_mean += ip.weight * T->Weight() * vals(j);
+      }
+      global_mean += element_mean;
+   }
+   return global_mean;
+}
+
+/* UW - for facets computing the mean over all faces */
+double GridFunction::ComputeMeanFacet(const IntegrationRule *irs[]) const
+{
+   double global_mean = 0.0;
+   double element_mean;
+   const FiniteElement *fe;
+   FaceElementTransformations *T;
+   double value;
+
+   for (int i = 0; i < fes->GetNE(); i++)
+   {
+      fe = fes->GetFaceElement(i);
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         int intorder = 2*fe->GetOrder() + 1; // <----------
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      T = fes->GetMesh()->GetFaceElementTransformations(i);
+      element_mean = 0.0;
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         T->Face->SetIntPoint(&ip);
+         value = GetValueFacet(i,ip);
+         element_mean += ip.weight * T->Face->Weight() * value;
+      }
+      global_mean += element_mean;
+   }
+   return global_mean;
+}
+
 double GridFunction::ComputeMaxError(
    Coefficient *exsol[], const IntegrationRule *irs[]) const
 {
@@ -2403,6 +2773,70 @@ double GridFunction::ComputeW11Error(
          }
       }
 
+   return error;
+}
+
+/* UW */
+/// To compute \| mean(u) - mean(u_h) \|_p
+double GridFunction::ComputeMeanLpError(const double p, Coefficient &exsol,
+                                    const IntegrationRule *irs[]) const
+{
+   double error = 0.0;
+   double err, local_error, local_size ;
+   const FiniteElement *fe;
+   ElementTransformation *T;
+   Vector vals;
+
+   for (int i = 0; i < fes->GetNE(); i++)
+   {
+      fe = fes->GetFE(i);
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         int intorder = 2*fe->GetOrder() + 1; // <----------
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      GetValues(i, *ir, vals);
+      T = fes->GetElementTransformation(i);
+      local_error = local_size = 0.0 ;
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         T->SetIntPoint(&ip);
+         err = (vals(j) - exsol.Eval(*T, ip));
+         local_error += ip.weight * T->Weight() * err;
+         local_size += ip.weight * T->Weight();
+      }
+      
+      if (p < numeric_limits<double>::infinity())
+      {
+         err = pow(fabs(local_error), p) / pow(local_size, p-1.);
+         error += err; 
+      }
+      else
+      {
+         err = fabs(local_error) / fabs(local_size);
+         error = std::max(error, err);
+      }
+   }
+
+   if (p < numeric_limits<double>::infinity())
+   {
+      // negative quadrature weights may cause the error to be negative
+      if (error < 0.)
+      {
+         error = -pow(-error, 1./p);
+      }
+      else
+      {
+         error = pow(error, 1./p);
+      }
+   }
+   
    return error;
 }
 
@@ -2714,6 +3148,218 @@ void GridFunction::ComputeElementLpErrors(const double p,
       }
    }
 }
+
+/* UW - Lp error for facets */
+double GridFunction::ComputeLpErrorFacets(const double p, Coefficient &exsol,
+                                          Coefficient *weight,
+                                          const IntegrationRule *irs[]) const
+{
+   double error = 0.0;
+   const FiniteElement *fe;
+   FaceElementTransformations *T;
+   double value;
+
+   for (int i = 0; i < fes->GetNE(); i++)
+   {
+      fe = fes->GetFaceElement(i);
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         int intorder = 2*fe->GetOrder() + 1; // <----------
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      T = fes->GetMesh()->GetFaceElementTransformations(i);
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         T->Face->SetIntPoint(&ip);
+         value = GetValueFacet(i,ip);
+         double err = fabs(value - exsol.Eval(*T->Face, ip));
+         if (p < numeric_limits<double>::infinity())
+         {
+            err = pow(err, p);
+            if (weight)
+            {
+               err *= weight->Eval(*T->Face, ip);
+            }
+            error += ip.weight * T->Face->Weight() * err;
+         }
+         else
+         {
+            if (weight)
+            {
+               err *= weight->Eval(*T->Face, ip);
+            }
+            error = std::max(error, err);
+         }
+      }
+   }
+
+   if (p < numeric_limits<double>::infinity())
+   {
+      // negative quadrature weights may cause the error to be negative
+      if (error < 0.)
+      {
+         error = pow(-error, 1./p);
+      }
+      else
+      {
+         error = pow(error, 1./p);
+      }
+   }
+
+   return error;
+}
+
+/* UW - Lp error for facets over the bdr with given attributes */
+double GridFunction::ComputeLpErrorFacetsBdr(const double p, Coefficient &exsol,
+                                             Array<int> &bdr_attr_marker,
+                                             Coefficient *weight,
+                                             const IntegrationRule *irs[]) const
+{
+   double error = 0.0;
+   const FiniteElement *fe;
+   FaceElementTransformations *T;
+   double value;
+
+   for (int i = 0; i < fes->GetNBE(); i++)
+   {
+      fe = fes->GetBE(i);
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         int intorder = 2*fe->GetOrder() + 1; // <----------
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      T = fes->GetMesh()->GetBdrFaceTransformations(i);
+      
+      int compute = 0;
+      if (bdr_attr_marker == NULL)
+          compute = 1;
+      else if (bdr_attr_marker[fes->GetMesh()->GetBdrAttribute(i)-1] == 1)
+          compute = 1;
+      
+      if (compute)    
+      {
+         for (int j = 0; j < ir->GetNPoints(); j++)
+         {
+            const IntegrationPoint &ip = ir->IntPoint(j);
+            T->Face->SetIntPoint(&ip);
+            value = GetValueBdrHDG(i, ip);
+            double err = fabs(value - exsol.Eval(*T->Face, ip));
+            if (p < numeric_limits<double>::infinity())
+            {
+               err = pow(err, p);
+               if (weight)
+               {
+                  err *= weight->Eval(*T->Face, ip);
+               }
+               error += ip.weight * T->Face->Weight() * err;
+            }
+            else
+            {
+               if (weight)
+               {
+                  err *= weight->Eval(*T->Face, ip);
+               }
+               error = std::max(error, err);
+            }
+        }
+      }
+   }
+
+   if (p < numeric_limits<double>::infinity())
+   {
+      // negative quadrature weights may cause the error to be negative
+      if (error < 0.)
+      {
+         error = pow(-error, 1./p);
+      }
+      else
+      {
+         error = pow(error, 1./p);
+      }
+   }
+
+   return error;
+}
+
+/* UW */
+double GridFunction::ComputeLpErrorMinMean(const double p, 
+                                           Coefficient &exsol, 
+                                           const double mean,
+                                           Coefficient *weight,
+                                           const IntegrationRule *irs[]) const
+{
+   double error = 0.0;
+   const FiniteElement *fe;
+   ElementTransformation *T;
+   Vector vals;
+
+   for (int i = 0; i < fes->GetNE(); i++)
+   {
+      fe = fes->GetFE(i);
+      const IntegrationRule *ir;
+      if (irs)
+      {
+         ir = irs[fe->GetGeomType()];
+      }
+      else
+      {
+         int intorder = 2*fe->GetOrder() + 1; // <----------
+         ir = &(IntRules.Get(fe->GetGeomType(), intorder));
+      }
+      GetValues(i, *ir, vals);
+      T = fes->GetElementTransformation(i);
+      for (int j = 0; j < ir->GetNPoints(); j++)
+      {
+         const IntegrationPoint &ip = ir->IntPoint(j);
+         T->SetIntPoint(&ip);
+         double err = fabs(vals(j) - mean - exsol.Eval(*T, ip));
+         if (p < numeric_limits<double>::infinity())
+         {
+            err = pow(err, p);
+            if (weight)
+            {
+               err *= weight->Eval(*T, ip);
+            }
+            error += ip.weight * T->Weight() * err;
+         }
+         else
+         {
+            if (weight)
+            {
+               err *= weight->Eval(*T, ip);
+            }
+            error = std::max(error, err);
+         }
+      }
+   }
+
+   if (p < numeric_limits<double>::infinity())
+   {
+      // negative quadrature weights may cause the error to be negative
+      if (error < 0.)
+      {
+         error = -pow(-error, 1./p);
+      }
+      else
+      {
+         error = pow(error, 1./p);
+      }
+   }
+
+   return error;
+}
+
 
 GridFunction & GridFunction::operator=(double value)
 {
