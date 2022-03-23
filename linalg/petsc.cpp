@@ -2905,8 +2905,15 @@ void PetscBDDCSolver::BDDCSolverConstructor(const PetscBDDCSolverParams &opts)
 
                ierr = VecGetArrayRead(pvec_coords,&garray); CCHKERRQ(PETSC_COMM_SELF,ierr);
                ierr = VecGetArray(lvec_coords,&larray); CCHKERRQ(PETSC_COMM_SELF,ierr);
+#if PETSC_VERSION_LT(3,15,0)
                ierr = PetscSFBcastBegin(sf,MPIU_SCALAR,garray,larray); CCHKERRQ(comm,ierr);
                ierr = PetscSFBcastEnd(sf,MPIU_SCALAR,garray,larray); CCHKERRQ(comm,ierr);
+#else
+               ierr = PetscSFBcastBegin(sf,MPIU_SCALAR,garray,larray,MPI_REPLACE);
+               CCHKERRQ(comm,ierr);
+               ierr = PetscSFBcastEnd(sf,MPIU_SCALAR,garray,larray,MPI_REPLACE);
+               CCHKERRQ(comm,ierr);
+#endif
                ierr = VecRestoreArrayRead(pvec_coords,&garray); CCHKERRQ(PETSC_COMM_SELF,ierr);
                ierr = VecRestoreArray(lvec_coords,&larray); CCHKERRQ(PETSC_COMM_SELF,ierr);
             }
