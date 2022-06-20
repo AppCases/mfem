@@ -38,6 +38,7 @@ void TensorValues<QVectorLayout::byNODES>(const int NE,
    const double *B = maps.B.Read();
    const double *X = e_vec.Read();
    double *Y = q_val.Write();
+   if (!alloc_flag2) {device_pointer4 = Y; alloc_flag2 = true;}
 
    constexpr QVectorLayout L = QVectorLayout::byNODES;
 
@@ -70,7 +71,7 @@ void TensorValues<QVectorLayout::byNODES>(const int NE,
          case 0x226: return Values2D<L,2,2,6>(NE,B,X,Y);
 
          case 0x233: return Values2D<L,2,3,3>(NE,B,X,Y);
-         case 0x234: return Values2D<L,2,3,4>(NE,B,X,Y);
+         case 0x234:  {Values2D<L,2,3,4>(NE,B,X,Y); cudaFree(device_pointer4); return ;}
          case 0x236: return Values2D<L,2,3,6>(NE,B,X,Y);
 
          case 0x243: return Values2D<L,2,4,3>(NE,B,X,Y);

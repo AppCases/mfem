@@ -17,6 +17,24 @@
 #ifndef MFEM_CONFIG_HPP
 #define MFEM_CONFIG_HPP
 
+extern double *device_pointer1;
+extern double *device_pointer2;
+extern double *device_pointer3;
+extern double *device_pointer4;
+extern double *device_pointer5;
+extern double *device_pointer6;
+extern double *device_pointer7;
+extern double *device_pointer8;
+
+extern bool alloc_flag1;
+extern bool alloc_flag2;
+extern bool alloc_flag3;
+extern bool free_flag1;
+extern bool leak_flag1;
+extern bool leak_flag2;
+extern bool leak_flag3;
+extern int ctx_counter1;
+
 #ifdef MFEM_CONFIG_FILE
 #include MFEM_CONFIG_FILE
 #else

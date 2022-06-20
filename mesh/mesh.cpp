@@ -881,8 +881,8 @@ const FaceGeometricFactors* Mesh::GetFaceGeometricFactors(
 void Mesh::DeleteGeometricFactors()
 {
    for (int i = 0; i < geom_factors.Size(); i++)
-   {
-      delete geom_factors[i];
+   {  leak_flag1 = true;
+      delete geom_factors[i]; leak_flag1 = false;
    }
    geom_factors.SetSize(0);
    for (int i = 0; i < face_geom_factors.Size(); i++)

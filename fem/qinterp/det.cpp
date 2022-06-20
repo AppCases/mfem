@@ -189,6 +189,7 @@ void TensorDeterminants(const int NE,
    const double *G = maps.G.Read();
    const double *X = e_vec.Read();
    double *Y = q_det.Write();
+   device_pointer5 = Y;
 
    const int id = (vdim<<8) | (D1D<<4) | Q1D;
 

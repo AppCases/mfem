@@ -39,6 +39,8 @@ void TensorDerivatives<QVectorLayout::byNODES>(const int NE,
    const double *J = nullptr; // not used in DERIVATIVES (non-GRAD_PHYS) mode
    const double *X = e_vec.Read();
    double *Y = q_der.Write();
+   if (alloc_flag1) {device_pointer2 = Y;}
+   if (!alloc_flag1) {device_pointer1 = Y; alloc_flag1 = true;}
 
    constexpr QVectorLayout L = QVectorLayout::byNODES;
    constexpr bool P = false; // GRAD_PHYS

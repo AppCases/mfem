@@ -936,7 +936,7 @@ public:
       Mk.Swap(t.Mk);
    }
 
-   ~DenseTensor() { tdata.Delete(); }
+   ~DenseTensor() { leak_flag2 = true; tdata.Delete(); leak_flag2 = false;}
 };
 
 /** @brief Compute the LU factorization of a batch of matrices

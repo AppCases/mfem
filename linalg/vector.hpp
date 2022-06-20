@@ -119,6 +119,9 @@ public:
    /// Return the device flag of the Memory object used by the Vector
    virtual bool UseDevice() const { return data.UseDevice(); }
 
+   // add deleteData function
+   void deleteData() {this->data.Delete();}
+
    /// Reads a vector from multiple files
    void Load(std::istream ** in, int np, int * dim);
 

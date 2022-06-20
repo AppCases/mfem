@@ -116,6 +116,8 @@ void MassIntegrator::AssemblePA(const FiniteElementSpace &fes)
             }
          }
       });
+      if (free_flag1) {cudaFree(device_pointer1);}
+      if (!free_flag1) {free_flag1 = true;}
    }
    if (dim==3)
    {

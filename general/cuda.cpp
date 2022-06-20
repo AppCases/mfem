@@ -83,7 +83,8 @@ void* CuMemFree(void *dptr)
    mfem::out << "CuMemFree(): deallocating memory @ " << dptr << " ... "
              << std::flush;
 #endif
-   MFEM_GPU_CHECK(cudaFree(dptr));
+   if (!leak_flag1 && !leak_flag2 && !leak_flag3) {
+      MFEM_GPU_CHECK(cudaFree(dptr));}
 #ifdef MFEM_TRACK_CUDA_MEM
    mfem::out << "done." << std::endl;
 #endif
